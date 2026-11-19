@@ -1,0 +1,10 @@
+output/
+__pycache__/
+*.pyc
+.venv/
+# never commit credentials
+.env
+.env.*
+*cookies*.txt
+secrets/
+*.pem

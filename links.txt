@@ -1,0 +1,4 @@
+# Paste video links here (one per line). Each one is clipped on the next run, then remembered.
+# Works with YouTube videos/streams and Twitch VODs. Lines starting with # are ignored.
+# Example:
+# https://www.youtube.com/watch?v=VIDEO_ID

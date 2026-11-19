@@ -1,0 +1,89 @@
+# GTA 6 clipper settings. Edit this file (you can edit it right on github.com).
+# No API keys are needed anywhere.
+
+# Creators to check every run. Only channels with permission: true are used.
+streamers:
+  - platform: youtube              # youtube | twitch
+    channel: "@ExampleStreamer"    # YouTube handle/URL, or Twitch login name
+    credit: "@ExampleStreamer"     # shown on the clip
+    permission: false              # set to true once the creator said OK
+    scan_all_videos: false         # true = also check videos without GTA 6 in the title
+  - platform: twitch
+    channel: example_twitch_name
+    credit: "@example_twitch_name"
+    permission: false
+    scan_all_videos: false
+
+# Strong GTA 6 words: a video title must contain one (unless scan_all_videos),
+# and each one spoken in the transcript raises a moment's score a lot.
+keywords:
+  - gta 6
+  - gta six
+  - gta vi
+  - gta6
+  - grand theft auto 6
+  - grand theft auto vi
+  - grand theft auto six
+
+# Words that are about GTA 6 but weaker on their own.
+context_terms:
+  - vice city
+  - leonida
+  - lucia
+  - jason
+  - rockstar
+  - heist
+  - wanted level
+  - five star
+  - cops
+  - police
+  - trailer
+
+# Reaction words that usually mean a funny / crazy moment.
+hype_phrases:
+  - no way
+  - oh my god
+  - what the
+  - let's go
+  - holy
+  - bro
+  - insane
+  - crazy
+  - wtf
+  - are you kidding
+  - i can't believe
+
+discovery:
+  recent_videos_per_channel: 8     # newest uploads/streams to look at per channel
+  max_age_days: 7                  # ignore videos older than this
+  max_videos_per_run: 4            # the rest wait for the next run
+
+transcript:
+  languages: ["en"]                # preferred caption languages, in order
+  caption_wait_runs: 2             # runs to wait for YouTube auto-captions before using Whisper
+  whisper_fallback: true           # transcribe on the server when there are no captions (Twitch VODs)
+  whisper_model: base              # tiny | base | small  (bigger = better but slower)
+  whisper_language: null           # null = auto-detect, or e.g. "en", "hi"
+  whisper_max_minutes: 480         # skip Whisper for videos longer than this
+
+selection:
+  clips_per_video: 3
+  target_seconds: 45
+  min_seconds: 15
+  max_seconds: 59
+  min_score: 4
+  weights:
+    keyword: 3
+    context: 1
+    hype: 1
+    reaction_tag: 2                # [Laughter], [Applause] etc. in captions
+    most_replayed: 6               # YouTube "Most replayed" graph: peak value (0..1) inside the clip
+
+edit:
+  vertical: true                   # 9:16 version for Shorts/Reels/TikTok
+  keep_original: true              # also save the plain horizontal cut
+  burn_captions: true
+  headline: "GTA 6 MOMENT"         # no emojis (the font can't draw them)
+  font_file: null                  # null = pick automatically (DejaVu on Linux, Arial on Windows/Mac)
+  width: 1080
+  height: 1920
