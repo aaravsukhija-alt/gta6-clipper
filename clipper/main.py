@@ -104,6 +104,8 @@ def main() -> int:
     cfg = load_config()
     publisher.configure(cfg)
     media = publisher.media_dir()
+    # only one run happens at a time, so a lock left behind by a cancelled run is always stale
+    (media / ".lock").unlink(missing_ok=True)
     test = os.getenv("TEST_STREAMER", "").strip().lower()
     auto = bool(cfg["posting"]["auto"]) and not test
 
