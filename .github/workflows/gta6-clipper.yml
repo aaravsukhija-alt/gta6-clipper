@@ -99,10 +99,23 @@ jobs:
             # the runner may not see a winget-installed ffmpeg; keep our own copy in the user folder
             T="$HOME/.gta6clipper-tools"; mkdir -p "$T"
             if [ ! -x "$T/ffmpeg/bin/ffmpeg.exe" ]; then
-              curl -fsSL --retry 3 -o "$T/ffmpeg.zip" \
-                https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip
-              python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$(cygpath -w "$T/ffmpeg.zip")" "$(cygpath -w "$T")"
-              rm -rf "$T/ffmpeg"; mv "$T"/ffmpeg-*-win64-gpl "$T/ffmpeg"; rm -f "$T/ffmpeg.zip"
+              # big download over home internet: resume after dropped connections, two mirrors
+              got=""
+              for url in https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip \
+                         https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip; do
+                rm -f "$T/ffmpeg.zip"
+                for i in 1 2 3 4 5 6 7 8; do
+                  if curl -fL --retry 5 --retry-all-errors --retry-delay 5 -C - -o "$T/ffmpeg.zip" "$url"; then got=1; break; fi
+                  echo "download interrupted (try $i), resuming..."; sleep 5
+                done
+                if [ -n "$got" ] && python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).testzip()" "$(cygpath -w "$T/ffmpeg.zip")"; then break; fi
+                got=""
+              done
+              [ -n "$got" ] || { echo "::error::could not download ffmpeg"; exit 1; }
+              rm -rf "$T/unz"; mkdir -p "$T/unz"
+              python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$(cygpath -w "$T/ffmpeg.zip")" "$(cygpath -w "$T/unz")"
+              rm -rf "$T/ffmpeg"; mv "$(dirname "$(dirname "$(ls "$T"/unz/*/bin/ffmpeg.exe | head -1)")")" "$T/ffmpeg"
+              rm -rf "$T/unz" "$T/ffmpeg.zip"
             fi
             cygpath -w "$T/ffmpeg/bin" >> "$GITHUB_PATH"
           elif [ "$RUNNER_OS" = "Linux" ]; then
