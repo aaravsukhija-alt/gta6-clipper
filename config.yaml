@@ -117,7 +117,7 @@ live:
   weights: {chat: 1.5, hype: 1.5, loudness: 1.0}
 
 posting:
-  auto: false                     # turned on after the Kai Cenat test passes (require_approval: false)
+  auto: true                      # ON: Kai clips that pass the rules check post automatically (require_approval: false)
   auto_streamers: [kaicenat]      # only these are posted automatically
   share:                          # everything else (and Kai beyond the daily limits) is SENT TO YOU:
     enabled: true                 # EDITED + CLEAN .mp4 links on the "Clips to submit" issue
