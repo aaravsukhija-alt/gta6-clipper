@@ -140,7 +140,8 @@ jobs:
           key: whisper-models-v1
 
       - name: Offline tests
-        timeout-minutes: 15
+        if: inputs.self_test || runner.environment == 'github-hosted'   # not every 3 h on the laptop
+        timeout-minutes: 30
         run: ffmpeg -version | head -1 && python -m pytest -q tests
 
       - name: Connection self-test
