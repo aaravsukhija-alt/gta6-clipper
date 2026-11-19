@@ -1,1 +1,40 @@
-{"items": {}}
+{
+ "items": {
+  "twitch:v2918060463": {
+   "note": "title has no GTA 6 keyword",
+   "title": "PLEASE DON’T WATCH THIS STREAM",
+   "status": "skipped",
+   "updated": "2026-11-19T19:39:11+00:00"
+  },
+  "twitch:v2920505943": {
+   "note": "title has no GTA 6 keyword",
+   "title": "🎮PLAYING EVERY GTA UNTIL I BEAT IT: Grand Theft Auto 3🎮",
+   "status": "skipped",
+   "updated": "2026-11-19T19:39:11+00:00"
+  },
+  "twitch:v2922436506": {
+   "note": "title has no GTA 6 keyword",
+   "title": "🎮 PLAYING EVERY GTA UNTIL I BEAT IT: Grand Theft Auto SAN ANDREAS🎮",
+   "status": "skipped",
+   "updated": "2026-11-19T19:39:11+00:00"
+  },
+  "twitch:v2924282282": {
+   "note": "title has no GTA 6 keyword",
+   "title": "🎮 PLAYING EVERY GTA UNTIL I BEAT IT: Grand Theft Auto 4🎮",
+   "status": "skipped",
+   "updated": "2026-11-19T19:39:11+00:00"
+  },
+  "twitch:v2932305259": {
+   "note": "stream not finished (is_live)",
+   "title": "🌴PLAYING GTA 6 FOR THE FIRST TIME🌴 2026-11-20 01:09",
+   "status": "deferred",
+   "updated": "2026-11-19T19:39:17+00:00"
+  },
+  "twitchvod:v2932305259": {
+   "note": "stream not finished (is_live)",
+   "title": "🌴PLAYING GTA 6 FOR THE FIRST TIME🌴 2026-11-20 01:09",
+   "status": "deferred",
+   "updated": "2026-11-19T19:39:17+00:00"
+  }
+ }
+}
