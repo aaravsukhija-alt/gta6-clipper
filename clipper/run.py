@@ -296,7 +296,7 @@ def main(argv=None) -> int:
     return run_clips(args)
 
 
-def run_clips(args, on_clips=None, between=None) -> int:
+def run_clips(args, on_clips=None, between=None, should_stop=None) -> int:
 
     cfg = load_config(args.config)
     state = State()
@@ -314,6 +314,9 @@ def run_clips(args, on_clips=None, between=None) -> int:
         cap = cfg["discovery"]["max_videos_per_run"]
         log(f"{len(jobs)} video(s) to check" + (f", doing {cap} now" if len(jobs) > cap else ""))
         for job in jobs[:cap]:
+            if should_stop and should_stop():
+                log("stopping early (a manual run is waiting)")
+                break
             log(f"video: {job.url}")
             try:
                 result = process(job, cfg, state, run_dir, report)

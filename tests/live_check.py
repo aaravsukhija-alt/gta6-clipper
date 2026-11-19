@@ -50,9 +50,9 @@ def check(name, fn, youtube=False):
 def yt_pick():
     entries = ytdlp.list_channel("ytsearch8:gta 6 gameplay reaction", 8)
     for e in entries:
-        if e.get("duration") and 120 < e["duration"] < 1500:
+        if e.get("duration") and 60 < e["duration"] < 1500:
             return f"https://www.youtube.com/watch?v={e['id']}"
-    return f"https://www.youtube.com/watch?v={entries[0]['id']}"
+    raise RuntimeError("no short video in the search results")
 
 
 check("youtube search/listing", lambda: state.setdefault("url", yt_pick()))
@@ -62,25 +62,8 @@ if "url" in state:
         return f"{i['title']!r} {i.get('duration')}s heatmap={bool(i.get('heatmap'))}"
     check("youtube metadata", yt_info, youtube=True)
 
-if "info" in state:
-    def yt_caps():
-        segs = transcript.captions(state["info"], ["en"], tmp / "subs")
-        assert segs, "no caption lines"
-        return f"{len(segs)} lines, e.g. {segs[len(segs) // 2].text!r}"
-    check("youtube captions", yt_caps, youtube=True)
-
-    def yt_cut():
-        p = ytdlp.download_section(state["url"], 30, 40, tmp / "yt.mp4")
-        v = editor.make_vertical(p, tmp / "yt_v.mp4", "GTA 6 MOMENT", "clip: @test",
-                                 {"width": 1080, "height": 1920, "font_file": None})
-        return f"{p.stat().st_size // 1024} KB cut, {v.stat().st_size // 1024} KB vertical"
-    check("youtube clip download + edit", yt_cut, youtube=True)
-
-    def yt_whisper():
-        segs = transcript.whisper(state["url"], "tiny", None, tmp / "audio")
-        assert segs, "whisper produced nothing"
-        return f"{len(segs)} lines, e.g. {segs[0].text!r}"
-    check("youtube audio + whisper", yt_whisper, youtube=True)
+# (YouTube captions / downloads / Whisper are not checked any more: sources are Twitch-only, and Whisper
+#  is covered by the Twitch checks below. The old check once picked a 10-hour video and hung.)
 
 
 # ---------------- Twitch ----------------

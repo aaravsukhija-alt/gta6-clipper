@@ -81,7 +81,8 @@ def service(cfg: dict, on_clips, minutes: float) -> int:
     threads.append(threading.Thread(target=poster, name="poster", daemon=True))
     for t in threads:
         t.start()
-    code = run.run_clips(Namespace(url=[], config=None, no_links=False, streamer=None), on_clips=on_clips)
+    code = run.run_clips(Namespace(url=[], config=None, no_links=False, streamer=None), on_clips=on_clips,
+                         should_stop=manual_run_waiting)
     print(f"VOD backup pass done; live mode + posting keep running until {time.strftime('%H:%M', time.localtime(deadline))}")
     while time.time() < deadline:
         if manual_run_waiting():
