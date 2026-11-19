@@ -18,11 +18,76 @@ streamers:
   - {platform: twitch, channel: asianjeff, name: AsianJeff, short_name: Jeff, credit: "@AsianJeff",
      hashtag: "#AsianJeff", campaign: "Reach - Content Rewards (AsianJeff)",
      campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true}
-  # Extra big streamers: NOT in a campaign you joined, so their clips are only SENT TO YOU (never
-  # auto-posted). Check Content Rewards for their campaigns before posting them.
-  - {platform: youtube, channel: "@IShowSpeed", name: IShowSpeed, short_name: Speed, credit: "@IShowSpeed",
-     hashtag: "#IShowSpeed", campaign: "No campaign joined yet - check Content Rewards for IShowSpeed",
-     campaign_url: "https://contentrewards.com", priority: 3, permission: true, live: false}
+  # More big English streamers playing GTA 6 (no campaign joined yet: posts won't earn until you join
+  # their campaigns on Content Rewards). Auto-posted after Kai's clips, best score first.
+  - {platform: twitch, channel: "xqc", name: "xQc", short_name: "xQc", credit: "@xqc", hashtag: "#xQc",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "caseoh_", name: "CaseOh", short_name: "CaseOh", credit: "@caseoh_", hashtag: "#CaseOh",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "hasanabi", name: "HasanAbi", short_name: "Hasan", credit: "@hasanabi", hashtag: "#HasanAbi",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "zackrawrr", name: "Asmongold", short_name: "Asmon", credit: "@zackrawrr", hashtag: "#Asmongold",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "stableronaldo", name: "Stable Ronaldo", short_name: "Ronaldo", credit: "@stableronaldo", hashtag: "#StableRonaldo",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "jynxzi", name: "Jynxzi", short_name: "Jynxzi", credit: "@jynxzi", hashtag: "#Jynxzi",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "summit1g", name: "summit1g", short_name: "Summit", credit: "@summit1g", hashtag: "#summit1g",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "shroud", name: "shroud", short_name: "Shroud", credit: "@shroud", hashtag: "#shroud",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "tarik", name: "tarik", short_name: "Tarik", credit: "@tarik", hashtag: "#tarik",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "sketch", name: "Sketch", short_name: "Sketch", credit: "@sketch", hashtag: "#Sketch",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "plaqueboymax", name: "PlaqueBoyMax", short_name: "Max", credit: "@plaqueboymax", hashtag: "#PlaqueBoyMax",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "sodapoppin", name: "Sodapoppin", short_name: "Soda", credit: "@sodapoppin", hashtag: "#Sodapoppin",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "nmplol", name: "Nmplol", short_name: "Nick", credit: "@nmplol", hashtag: "#Nmplol",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "extraemily", name: "ExtraEmily", short_name: "Emily", credit: "@extraemily", hashtag: "#ExtraEmily",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "fuslie", name: "Fuslie", short_name: "Fuslie", credit: "@fuslie", hashtag: "#Fuslie",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "agent00", name: "Agent00", short_name: "Agent", credit: "@agent00", hashtag: "#Agent00",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "emiru", name: "Emiru", short_name: "Emiru", credit: "@emiru", hashtag: "#Emiru",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "jasontheween", name: "JasonTheWeen", short_name: "Jason", credit: "@jasontheween", hashtag: "#JasonTheWeen",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "buddha", name: "Buddha", short_name: "Buddha", credit: "@buddha", hashtag: "#Buddha",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "ramee", name: "Ramee", short_name: "Ramee", credit: "@ramee", hashtag: "#Ramee",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "kebun", name: "Kebun", short_name: "Kebun", credit: "@kebun", hashtag: "#Kebun",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "hutchmf", name: "Hutch", short_name: "Hutch", credit: "@hutchmf", hashtag: "#Hutch",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "lirik", name: "LIRIK", short_name: "Lirik", credit: "@lirik", hashtag: "#LIRIK",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "timthetatman", name: "TimTheTatman", short_name: "Tim", credit: "@timthetatman", hashtag: "#TimTheTatman",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "nickmercs", name: "NICKMERCS", short_name: "Nick", credit: "@nickmercs", hashtag: "#NICKMERCS",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "moonmoon", name: "MOONMOON", short_name: "Moon", credit: "@moonmoon", hashtag: "#MOONMOON",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "pokimane", name: "Pokimane", short_name: "Poki", credit: "@pokimane", hashtag: "#Pokimane",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "cinna", name: "Cinna", short_name: "Cinna", credit: "@cinna", hashtag: "#Cinna",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "tfue", name: "Tfue", short_name: "Tfue", credit: "@tfue", hashtag: "#Tfue",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: twitch, channel: "fanum", name: "Fanum", short_name: "Fanum", credit: "@fanum", hashtag: "#Fanum",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: youtube, channel: "@IShowSpeed", name: "IShowSpeed", short_name: "Speed", credit: "@IShowSpeed", hashtag: "#IShowSpeed",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: youtube, channel: "@ludwig", name: "Ludwig", short_name: "Ludwig", credit: "@ludwig", hashtag: "#Ludwig",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: youtube, channel: "@Valkyrae", name: "Valkyrae", short_name: "Rae", credit: "@Valkyrae", hashtag: "#Valkyrae",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
+  - {platform: youtube, channel: "@penguinz0", name: "MoistCr1TiKaL", short_name: "Charlie", credit: "@penguinz0", hashtag: "#MoistCr1TiKaL",
+     campaign: "No campaign joined yet - check Content Rewards", campaign_url: "https://contentrewards.com", priority: 3, permission: true}
 # Optional per streamer (add inside the { } of that streamer):
 #   campaign_url: "https://whop.com/..."   added to the phone notification
 #   facecam: [x, y, w, h]                   fix the face-cam box if auto-detect is wrong. Fractions of the
@@ -51,7 +116,7 @@ discovery:
   recent_videos_per_channel: 5
   min_date: "2026-11-18"          # never use VODs from before this day
   max_age_days: 14
-  max_videos_per_run: 5
+  max_videos_per_run: 6
 
 transcript:
   languages: ["en"]
@@ -118,7 +183,7 @@ live:
 
 posting:
   auto: true                      # ON: Kai clips that pass the rules check post automatically (require_approval: false)
-  auto_streamers: [kaicenat]      # only these are posted automatically
+  auto_streamers: null            # null = every streamer is posted automatically (Kai first, then best score)
   share:                          # everything else (and Kai beyond the daily limits) is SENT TO YOU:
     enabled: true                 # EDITED + CLEAN .mp4 links on the "Clips to submit" issue
     max_per_day: 10               # best first
