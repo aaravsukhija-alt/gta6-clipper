@@ -106,10 +106,13 @@ def make_clip(job, info: dict, cand: dict, cfg: dict, work: Path, out_dir: Path)
                                    family, teaser)
     out = out_dir / f"{stem}_vertical.mp4"
     editor.make_vertical(raw, out, hook, f"clip: {st['credit']}", edit, ass if n_caps else None, teaser, lay)
+    clean = out_dir / f"{stem}_clean.mp4"        # same moment, no text at all, original audio only
+    editor.make_vertical(raw, clean, "", "", edit, None, None, lay)
     raw.unlink(missing_ok=True)
     length = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
                                    str(out)], capture_output=True, text=True).stdout.strip() or 0)
-    return {"id": stem, "file": str(out), "streamer": st["channel"], "hook": hook, "score": cand["score"],
+    return {"id": stem, "file": str(out), "clean_file": str(clean), "streamer": st["channel"], "hook": hook,
+            "score": cand["score"],
             "why": cand["why"], "transcript": cand["text"], "face_ratio": round(lay["face_ratio"], 2),
             "layout": lay.get("mode"), "facecam": lay.get("box"), "lang": cand.get("lang", "en"),
             "source": f"https://www.twitch.tv/videos/{str(info['id']).lstrip('v')}?t={int(cand['start'])}s",

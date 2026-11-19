@@ -96,10 +96,14 @@ def enqueue(item: dict, media: Path | None = None):
     media = media or MEDIA
     QUEUE_DIR.mkdir(parents=True, exist_ok=True)
     media.mkdir(parents=True, exist_ok=True)
-    dest = media / Path(item["file"]).name
-    if Path(item["file"]).resolve() != dest.resolve():
-        dest.write_bytes(Path(item["file"]).read_bytes())
-    item = dict(item, file=str(dest))
+    item = dict(item)
+    for key in ("file", "clean_file"):
+        if not item.get(key):
+            continue
+        dest = media / Path(item[key]).name
+        if Path(item[key]).resolve() != dest.resolve():
+            dest.write_bytes(Path(item[key]).read_bytes())
+        item[key] = str(dest)
     (QUEUE_DIR / f"{item['id']}.json").write_text(json.dumps(item, indent=1, ensure_ascii=False), encoding="utf-8")
 
 
@@ -341,7 +345,10 @@ def _run_posting(cfg, now, force, only, limit, ids) -> list[dict]:
         n = left if force else min(left, math.ceil(left / (slots or 1)))
         if limit is not None:
             n = min(n, limit)
+        auto_ok = set(pc.get("auto_streamers") or [s["channel"] for s in cfg["streamers"]])
+        shared = {x["clip"] for x in posted.get("shared", [])}
         todo = [q for q in queue if (platform, q["id"]) not in done and Path(q["file"]).exists() and not q.get("rejected")
+                and q["streamer"] in auto_ok and q["id"] not in shared
                 and (ids is None or q["id"] in ids)][:max(0, n)]
         for item in todo:
             st = streamers.get(item["streamer"])
@@ -379,6 +386,80 @@ def _run_posting(cfg, now, force, only, limit, ids) -> list[dict]:
     return results
 
 
+def _window_over(cfg: dict, created: str, now: datetime) -> bool:
+    """True once the posting window of the clip's day (or a later day's window) has passed."""
+    b = cfg["posting"]["window_ist"][1]
+    t = now.astimezone(IST)
+    end_today = t.replace(hour=int(b[:2]), minute=int(b[3:]), second=0, microsecond=0)
+    made = datetime.fromisoformat(created).astimezone(IST)
+    return t >= end_today and made < end_today
+
+
+def run_sharing(cfg: dict, now: datetime | None = None) -> list[dict]:
+    """Clips that are NOT auto-posted (other streamers, and auto streamers' extras beyond the daily
+    limits) are sent to you on the issue: EDITED + CLEAN download links, caption, campaign link."""
+    sc = cfg["posting"].get("share") or {}
+    if not sc.get("enabled"):
+        return []
+    from . import ghrelease
+    if not ghrelease.available():
+        return []
+    with ledger_lock():
+        return _run_sharing(cfg, now or datetime.now(timezone.utc), sc, ghrelease)
+
+
+def _run_sharing(cfg, now, sc, ghrelease) -> list[dict]:
+    posted = load_posted()
+    posted.setdefault("shared", [])
+    day = ist_day(now)
+    left = int(sc.get("max_per_day", 10)) - sum(1 for x in posted["shared"] if x["day"] == day)
+    if left <= 0:
+        return []
+    streamers = {s["channel"]: s for s in cfg["streamers"]}
+    auto_ok = set(cfg["posting"].get("auto_streamers") or [])
+    done = {p["clip"] for p in posted["posts"] if p.get("ok")}
+    shared = {x["clip"] for x in posted["shared"]}
+    caps_full = all(posts_today(posted, p, now) >= daily_cap(cfg, posted, p, now)
+                    for p in PLATFORMS if cfg["posting"]["platforms"].get(p))
+    out = []
+    for item in order_queue(load_queue(), cfg):
+        if left <= 0:
+            break
+        if item["id"] in done or item["id"] in shared or item.get("rejected") or not Path(item["file"]).exists():
+            continue
+        st = streamers.get(item["streamer"])
+        if not st:
+            continue
+        auto = cfg["posting"]["auto"] and item["streamer"] in auto_ok
+        if auto and not (caps_full or _window_over(cfg, item["created"], now)):
+            continue                                   # will still be auto-posted
+        item.setdefault("hash", file_hash(item["file"]))
+        problems = rules_check(item, st, cfg, "instagram", posted)
+        if problems:
+            reject(item, problems)
+            continue
+        edited = ghrelease.upload(day, Path(item["file"]), f"{item['id']}_EDITED.mp4")
+        clean = ghrelease.upload(day, Path(item["clean_file"]), f"{item['id']}_CLEAN.mp4") \
+            if item.get("clean_file") and Path(item["clean_file"]).exists() else None
+        caption = texts.post_caption(st, item["id"], "instagram")
+        why = "beyond today's auto-post limit" if auto else "for you to post"
+        notify.send(
+            f"📥 **{st['name']}** clip {why} (score {item.get('score')})\n\n"
+            f"- EDITED (ready to post): {edited}\n"
+            + (f"- CLEAN (no text, original audio - add your own song in the app): {clean}\n" if clean else "")
+            + f"\n**Caption** (copy-paste):\n```\n{caption}\n```\n"
+            f"**Campaign:** {st['campaign']} - {st.get('campaign_url', '')}\n"
+            f"⏱️ Post it, then submit the post link within 30 minutes.\n"
+            f"Hook: {item.get('hook', '')} · source: {item.get('source', '')}")
+        rec = {"clip": item["id"], "streamer": item["streamer"], "day": day, "at": now.isoformat(timespec="seconds"),
+               "edited": edited, "clean": clean, "campaign": st["campaign"]}
+        posted["shared"].append(rec)
+        save_posted(posted)
+        out.append(rec)
+        left -= 1
+    return out
+
+
 def reject(item: dict, problems: list[str]):
     f = QUEUE_DIR / f"{item['id']}.json"
     item = dict(item, rejected=problems)
@@ -407,6 +488,12 @@ def write_report(cfg: dict):
                   f"rejected by rules: {len(rej)}", ""]
         lines += [f"- rejected `{q['id']}`: {', '.join(q['rejected'])}" for q in rej]
         if rej:
+            lines.append("")
+        sent = [x for x in posted.get("shared", []) if x["day"] == day]
+        if sent:
+            lines += [f"- Sent to you to post: **{len(sent)}**", ""]
+            lines += [f"  - {x['streamer']}: [edited]({x['edited']})" + (f" · [clean]({x['clean']})" if x.get("clean")
+                      else "") + f" → {x['campaign']}" for x in sent]
             lines.append("")
         if posts:
             lines += ["| Time (UTC) | Platform | Streamer | Link | Campaign |", "|---|---|---|---|---|"]

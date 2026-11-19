@@ -71,11 +71,12 @@ def service(cfg: dict, on_clips, minutes: float) -> int:
 
     def poster():
         while not stop.is_set():
-            if cfg["posting"]["auto"]:
-                try:
+            try:
+                if cfg["posting"]["auto"]:
                     publisher.run_posting(cfg)
-                except Exception as e:  # noqa: BLE001 - keep the clock running
-                    print(f"[post] {e}")
+                publisher.run_sharing(cfg)
+            except Exception as e:  # noqa: BLE001 - keep the clock running
+                print(f"[post] {e}")
             stop.wait(60)
     threads.append(threading.Thread(target=poster, name="poster", daemon=True))
     for t in threads:
@@ -128,6 +129,11 @@ def main() -> int:
         code = service(cfg, on_clips, float(os.getenv("CLIPPER_RUN_MINUTES", "165")))
     if auto:
         publisher.run_posting(cfg)
+    if not test:
+        try:
+            publisher.run_sharing(cfg)
+        except Exception as e:  # noqa: BLE001
+            print(f"[share] {e}")
     publisher.write_report(cfg)
     publisher.mirror_to_repo()
     return code

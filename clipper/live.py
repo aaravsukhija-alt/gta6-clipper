@@ -240,9 +240,12 @@ def make_live_clip(st: dict, raw: Path, spike: dict, cfg: dict, work: Path) -> d
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"{stem}_vertical.mp4"
     editor.make_vertical(raw, out, hook, f"clip: {st['credit']}", edit, ass if n else None, teaser, lay)
+    clean = out_dir / f"{stem}_clean.mp4"        # same moment, no text at all, original audio only
+    editor.make_vertical(raw, clean, "", "", edit, None, None, lay)
     final = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
                                   str(out)], capture_output=True, text=True).stdout.strip() or 0)
-    return {"id": stem, "file": str(out), "streamer": st["channel"], "hook": hook, "score": score,
+    return {"id": stem, "file": str(out), "clean_file": str(clean), "streamer": st["channel"], "hook": hook,
+            "score": score,
             "why": [f"chat {spike['ratio']}x", f"loud x{loud:.1f}"] + list(hype), "transcript": text[:500],
             "face_ratio": round(lay["face_ratio"], 2), "layout": lay.get("mode"), "facecam": lay.get("box"), "lang": lang,
             "source": f"https://www.twitch.tv/{st['channel']} (live)", "vod_title": "", "length": round(final, 1),
@@ -303,7 +306,8 @@ class LiveManager:
             record_live_moment(channel, center)
         self.clips_this_stream[channel] = self.clips_this_stream.get(channel, 0) + 1
         log(f"[clip {channel}] ready: {Path(clip['file']).name} score {clip['score']} hook '{clip['hook']}'")
-        if self.cfg["posting"]["auto"] and clip["score"] >= lc["post_min_score"]:
+        if self.cfg["posting"]["auto"] and clip["score"] >= lc["post_min_score"] \
+                and clip["streamer"] in (self.cfg["posting"].get("auto_streamers") or [clip["streamer"]]):
             res = publisher.run_posting(self.cfg, force=True, ids=[clip["id"]])
             log(f"[clip {channel}] posted: {[r.get('link') or r.get('error') for r in res] or 'daily limit reached'}")
         elif self.cfg["posting"]["auto"]:

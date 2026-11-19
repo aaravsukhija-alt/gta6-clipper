@@ -118,8 +118,9 @@ def test_window_caps_priority_and_no_double_posting(pub, cfg, monkeypatch):
     monkeypatch.setitem(publisher.POSTERS, "youtube", lambda it, st: calls.append(("yt", it["id"])) or f"yt/{it['id']}")
     monkeypatch.setitem(publisher.POSTERS, "instagram", lambda it, st: calls.append(("ig", it["id"])) or f"ig/{it['id']}")
     for i in range(12):
-        add_clip(pub, f"lacy{i}", "lacy", 50 - i)
-    add_clip(pub, "kai0", "kaicenat", 5)             # low score but Kai goes first
+        add_clip(pub, f"kai{i + 1}", "kaicenat", 50 - i)
+    add_clip(pub, "lacy0", "lacy", 99)                # other streamers are never auto-posted
+    add_clip(pub, "kai0", "kaicenat", 60)             # best score goes first
     assert publisher.run_posting(cfg, now=datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)) == []  # outside window
     publisher.run_posting(cfg, now=IN_WINDOW)
     assert calls[0] == ("yt", "kai0") and ("ig", "kai0") in calls
@@ -131,6 +132,7 @@ def test_window_caps_priority_and_no_double_posting(pub, cfg, monkeypatch):
     ig = [c for c in calls if c[0] == "ig"]
     assert len(yt) == 6 and len(ig) == 8              # week-1 caps
     assert len(set(calls)) == len(calls)              # never the same clip twice per platform
+    assert not any(c[1] == "lacy0" for c in calls)
     report = (pub / "daily_report.md").read_text()
     assert "2026-11-20" in report and "Kai Cenat - Content Rewards" in report
 
@@ -344,3 +346,33 @@ def test_live_clip_and_instant_post(tmp_path, monkeypatch, pub, cfg):
     res = publisher.run_posting(cfg, now=datetime(2026, 11, 20, 15, 0, tzinfo=timezone.utc), force=True,
                                 ids=[clip["id"]])
     assert [r["platform"] for r in res] == ["youtube", "instagram"] and set(calls) == {clip["id"]}
+
+
+
+def test_sharing_sends_others_and_kai_overflow(pub, cfg, monkeypatch):
+    from clipper import ghrelease
+    cfg["posting"]["auto"] = True
+    sent, uploads = [], []
+    monkeypatch.setattr(publisher.notify, "send", lambda t: sent.append(t) or True)
+    monkeypatch.setattr(ghrelease, "available", lambda: True)
+    monkeypatch.setattr(ghrelease, "upload", lambda day, f, name: uploads.append(name) or f"https://dl/{name}")
+    for i in range(14):
+        add_clip(pub, f"lacy{i:02d}", "lacy", 30 + i)
+        (pub / "media" / f"lacy{i:02d}_c.mp4").write_bytes(b"clean")
+        q = publisher.QUEUE_DIR / f"lacy{i:02d}.json"
+        q.write_text(json.dumps(dict(json.loads(q.read_text()), clean_file=str(pub / "media" / f"lacy{i:02d}_c.mp4"))))
+    add_clip(pub, "kaiX", "kaicenat", 80)
+    publisher.run_sharing(cfg, now=IN_WINDOW)
+    assert len(sent) == 10                                    # max 10 per day
+    assert "lacy13" in sent[0]                                # best first
+    assert all("kaiX" not in t for t in sent)                 # Kai is still going to be auto-posted
+    t = sent[0]
+    assert "EDITED" in t and "CLEAN" in t and "#LACY #GTA6 #GTAVI" in t and "within 30 minutes" in t
+    assert "contentrewards.com/c/campaigns/a5c63fad" in t
+    assert "lacy13_EDITED.mp4" in uploads and "lacy13_CLEAN.mp4" in uploads
+    sent.clear()
+    publisher.run_sharing(cfg, now=IN_WINDOW)
+    assert sent == []                                         # limit reached, nothing sent twice
+    # next day after the window: Kai clip that never got posted is sent to you
+    publisher.run_sharing(cfg, now=datetime(2026, 11, 21, 6, 0, tzinfo=timezone.utc))
+    assert any("kaiX" in t and "1d2bcb00" in t for t in sent)
