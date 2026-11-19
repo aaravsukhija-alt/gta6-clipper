@@ -46,14 +46,19 @@ def manual_run_waiting() -> bool:
         return False
     import json
     import urllib.request
-    try:
-        req = urllib.request.Request(f"https://api.github.com/repos/{repo}/actions/runs?status=queued&per_page=20",
-                                     headers={"Authorization": f"Bearer {tok}", "User-Agent": "gta6-clipper",
-                                              "Accept": "application/vnd.github+json"})
-        runs = json.loads(urllib.request.urlopen(req, timeout=20).read()).get("workflow_runs", [])
-        return any(r.get("event") == "workflow_dispatch" for r in runs)
-    except Exception:  # noqa: BLE001
-        return False
+    me = os.getenv("GITHUB_RUN_ID", "")
+    for status in ("queued", "pending", "waiting"):   # a run held back by "one at a time" shows as pending
+        try:
+            req = urllib.request.Request(
+                f"https://api.github.com/repos/{repo}/actions/runs?status={status}&per_page=20",
+                headers={"Authorization": f"Bearer {tok}", "User-Agent": "gta6-clipper",
+                         "Accept": "application/vnd.github+json"})
+            runs = json.loads(urllib.request.urlopen(req, timeout=20).read()).get("workflow_runs", [])
+            if any(r.get("event") == "workflow_dispatch" and str(r.get("id")) != me for r in runs):
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+    return False
 
 
 def service(cfg: dict, on_clips, minutes: float) -> int:
