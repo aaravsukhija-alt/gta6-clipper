@@ -61,17 +61,29 @@ jobs:
       - name: Python environment
         timeout-minutes: 30
         run: |
-          PY=""
-          for c in python3.12 python3.13 python3.11 python3.10 python3 python py; do
-            if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
-              PY="$c"; break
-            fi
-          done
-          if [ -z "$PY" ]; then echo "::error::Python 3.10+ not found. See README."; exit 1; fi
-          echo "using $PY ($("$PY" --version))"
+          # Whisper needs Python 3.10-3.13 (3.14+ has no packages for it yet)
+          ok() { "$@" -c 'import sys; sys.exit(0 if (3, 10) <= sys.version_info[:2] <= (3, 13) else 1)' >/dev/null 2>&1; }
           VENV="$HOME/.gta6clipper-venv"
-          [ -d "$VENV" ] || "$PY" -m venv "$VENV"
-          if [ -d "$VENV/Scripts" ]; then BIN="$VENV/Scripts"; else BIN="$VENV/bin"; fi
+          vbin() { if [ -d "$VENV/Scripts" ]; then echo "$VENV/Scripts"; else echo "$VENV/bin"; fi; }
+          if [ -d "$VENV" ] && ! ok "$(vbin)/python"; then echo "old environment has the wrong Python - rebuilding"; rm -rf "$VENV"; fi
+          if [ ! -d "$VENV" ]; then
+            PY=""
+            for c in "py -3.12" "py -3.11" "py -3.13" "py -3.10" python3.12 python3.11 python3.13 python3.10 python3 python; do
+              if ok $c; then PY="$c"; break; fi
+            done
+            if [ -n "$PY" ]; then
+              echo "using $PY"; $PY -m venv "$VENV"
+            else
+              # no suitable Python on this PC: fetch a private Python 3.12 with uv (no admin rights needed)
+              ANY=""; for c in python3 python py; do if command -v $c >/dev/null 2>&1; then ANY=$c; break; fi; done
+              if [ -n "$ANY" ]; then $ANY -m pip install -q --user -U uv; UV="$ANY -m uv"
+              else curl -LsSf https://astral.sh/uv/install.sh | sh; UV="$HOME/.local/bin/uv"; fi
+              echo "installing a private Python 3.12 with uv"
+              $UV venv --seed --python 3.12 "$VENV"
+            fi
+          fi
+          BIN="$(vbin)"
+          "$BIN/python" --version
           "$BIN/python" -m pip install -q -U pip
           "$BIN/python" -m pip install -q -U -r requirements.txt
           if command -v cygpath >/dev/null 2>&1; then BIN="$(cygpath -w "$BIN")"; fi
