@@ -111,6 +111,31 @@ hype_phrases:
   - crazy
   - are you kidding
   - i can't believe
+  # chases, crashes, glitches
+  - chase
+  - chasing
+  - cops
+  - glitch
+  - glitched
+  - bugged
+  - crashed
+  - flipped
+  # streamer going crazy / talking to chat / dancing / donations / roasts
+  - chat
+  - chat look
+  - chat what
+  - are you serious
+  - shut up
+  - stop it
+  - i'm crying
+  - dance
+  - dancing
+  - donation
+  - dono
+  - thank you for the
+  - gifted
+  - roast
+  - violated
 
 discovery:
   recent_videos_per_channel: 5
