@@ -1,12 +1,20 @@
 """Twitch VOD pipeline: loudness spikes -> Whisper (words) on just those spots -> score -> cut ->
 face check -> 9:16 edit with word captions + hook -> posting queue."""
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
 from . import audio, editor, texts, transcript, vision, ytdlp
 from .textmatch import REACTION_TAG, count_terms
+
+
+def source_link(info: dict, t: float) -> str:
+    url = info.get("webpage_url") or ""
+    if "youtube.com" in url or "youtu.be" in url:
+        return f"{url}{'&' if '?' in url else '?'}t={int(t)}s"
+    return f"https://www.twitch.tv/videos/{str(info['id']).lstrip('v')}?t={int(t)}s"
 
 
 def live_moments() -> list[dict]:
@@ -88,7 +96,7 @@ def find_candidates(audio_file: Path, info: dict, cfg: dict, work: Path) -> list
 
 def make_clip(job, info: dict, cand: dict, cfg: dict, work: Path, out_dir: Path) -> dict | None:
     st = job.streamer
-    stem = f"{st['channel']}_{info['id']}_{int(cand['start'])}"
+    stem = re.sub(r"[^A-Za-z0-9_-]", "", f"{st['channel']}_{info['id']}_{int(cand['start'])}")
     raw = ytdlp.download_section(job.url, cand["start"], cand["end"], work / f"{stem}.raw.mp4")
     edit = cfg["edit"]
     lay = vision.layout_for(raw, edit["width"], edit["height"], st)
@@ -115,7 +123,7 @@ def make_clip(job, info: dict, cand: dict, cfg: dict, work: Path, out_dir: Path)
             "score": cand["score"],
             "why": cand["why"], "transcript": cand["text"], "face_ratio": round(lay["face_ratio"], 2),
             "layout": lay.get("mode"), "facecam": lay.get("box"), "lang": cand.get("lang", "en"),
-            "source": f"https://www.twitch.tv/videos/{str(info['id']).lstrip('v')}?t={int(cand['start'])}s",
+            "source": source_link(info, cand["start"]),
             "vod_title": info.get("title", ""), "length": round(length, 1), "start": cand["start"],
             "end": cand["end"], "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}
 

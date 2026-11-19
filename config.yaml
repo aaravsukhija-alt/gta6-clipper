@@ -18,6 +18,11 @@ streamers:
   - {platform: twitch, channel: asianjeff, name: AsianJeff, short_name: Jeff, credit: "@AsianJeff",
      hashtag: "#AsianJeff", campaign: "Reach - Content Rewards (AsianJeff)",
      campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true}
+  # Extra big streamers: NOT in a campaign you joined, so their clips are only SENT TO YOU (never
+  # auto-posted). Check Content Rewards for their campaigns before posting them.
+  - {platform: youtube, channel: "@IShowSpeed", name: IShowSpeed, short_name: Speed, credit: "@IShowSpeed",
+     hashtag: "#IShowSpeed", campaign: "No campaign joined yet - check Content Rewards for IShowSpeed",
+     campaign_url: "https://contentrewards.com", priority: 3, permission: true, live: false}
 # Optional per streamer (add inside the { } of that streamer):
 #   campaign_url: "https://whop.com/..."   added to the phone notification
 #   facecam: [x, y, w, h]                   fix the face-cam box if auto-detect is wrong. Fractions of the

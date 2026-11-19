@@ -199,7 +199,8 @@ def process(job: Job, cfg: dict, state: State, run_dir: Path, report: Report) ->
         state.set(keys, "skipped", note="not a GTA 6 video", title=title)
         return "not GTA 6"
 
-    if str(info.get("extractor_key", "")).startswith("TwitchVod") and job.streamer.get("channel"):
+    ek = str(info.get("extractor_key", ""))
+    if (ek.startswith("TwitchVod") or ek == "Youtube") and job.streamer.get("channel"):
         return process_twitch_vod(job, info, cfg, state, keys, title, run_dir, report)
 
     tcfg = cfg["transcript"]
