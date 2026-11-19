@@ -96,7 +96,7 @@ edit:
   height: 1920
 
 live:
-  enabled: true                   # run on the laptop with start_live.cmd (no AI credits used)
+  enabled: false                  # OFF: clips are made only after a stream ends (from the VOD)
   require_gta: true
   twitch_game_names: ["Grand Theft Auto VI"]
   poll_seconds: 120               # how often to check who is live
@@ -124,7 +124,7 @@ posting:
     max_per_day: 10               # best first
   # Music: none is ever added. Clips only contain the streamer's original audio.
   platforms: {youtube: true, instagram: true}
-  window_ist: ["05:00", "10:00"]  # India time = US evening; posts are spread over 30-minute slots
+  window_ist: ["00:00", "23:59"]  # post as soon as clips are ready, spread over the day
   ramp:
     week1: {youtube: 6, instagram: 8}
     week2_plus: {youtube: 6, instagram: 15}
