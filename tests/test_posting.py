@@ -92,8 +92,9 @@ def test_word_ass_and_teaser_video(tmp_path):
 @pytest.fixture
 def pub(tmp_path, monkeypatch):
     monkeypatch.setattr(publisher, "STATE", tmp_path / "state")
-    monkeypatch.setattr(publisher, "QUEUE_DIR", tmp_path / "state" / "queue")
-    monkeypatch.setattr(publisher, "POSTED", tmp_path / "state" / "posted.json")
+    monkeypatch.setattr(publisher, "MEDIA", tmp_path / "media")
+    monkeypatch.setattr(publisher, "QUEUE_DIR", tmp_path / "media" / "queue")
+    monkeypatch.setattr(publisher, "POSTED", tmp_path / "media" / "posted.json")
     monkeypatch.setattr(publisher, "REPORT", tmp_path / "daily_report.md")
     monkeypatch.setattr(publisher.notify, "send", lambda t: True)
     return tmp_path
@@ -102,9 +103,11 @@ def pub(tmp_path, monkeypatch):
 def add_clip(tmp, cid, streamer, score):
     f = tmp / f"{cid}.mp4"
     f.write_bytes(b"x")
+    f.write_bytes(cid.encode())                              # different content per clip
     publisher.enqueue({"id": cid, "file": str(f), "streamer": streamer, "hook": "WAIT FOR IT", "score": score,
-                       "source": "https://www.twitch.tv/videos/1?t=5s", "created": "2026-11-20T00:00:00+00:00"},
-                      tmp / "media")
+                       "source": f"https://www.twitch.tv/videos/1?t={len(cid)}{score}s", "face_ratio": 0.9,
+                       "length": 25.0, "lang": "en", "transcript": "no way bro",
+                       "created": "2026-11-20T00:00:00+00:00"}, tmp / "media")
 
 
 IN_WINDOW = datetime(2026, 11, 20, 0, 0, tzinfo=timezone.utc)       # 05:30 IST
@@ -140,11 +143,40 @@ def test_error_stops_only_that_platform(pub, cfg, monkeypatch):
     for i in range(3):
         add_clip(pub, f"k{i}", "kaicenat", 10 - i)
     publisher.run_posting(cfg, now=IN_WINDOW, force=True)
-    p = json.loads((pub / "state" / "posted.json").read_text())
+    p = json.loads((pub / "media" / "posted.json").read_text())
     assert "youtube" in p["disabled"] and "instagram" not in p["disabled"]
     assert sum(1 for r in p["posts"] if r["platform"] == "youtube") == 1     # stopped after the first error
     assert sum(1 for r in p["posts"] if r["platform"] == "instagram" and r["ok"]) == 3
     assert publisher.run_posting(cfg, now=IN_WINDOW, force=True, only=["youtube"]) == []
+
+
+def test_rules_check_rejects_bad_clips(pub, cfg, monkeypatch):
+    calls = []
+    monkeypatch.setitem(publisher.POSTERS, "youtube", lambda it, st: calls.append(it["id"]) or "yt")
+    monkeypatch.setitem(publisher.POSTERS, "instagram", lambda it, st: calls.append(it["id"]) or "ig")
+    add_clip(pub, "good", "kaicenat", 10)
+    for cid, change in [("noface", {"face_ratio": 0.1}), ("spanish", {"lang": "es"}), ("long", {"length": 44}),
+                        ("slur", {"transcript": "nigga what"}), ("neg", {"hook": "KAI EXPOSED FOR CHEATING"})]:
+        add_clip(pub, cid, "kaicenat", 50)
+        f = publisher.QUEUE_DIR / f"{cid}.json"
+        f.write_text(json.dumps(dict(json.loads(f.read_text()), **change)))
+    publisher.run_posting(cfg, now=IN_WINDOW, force=True)
+    assert set(calls) == {"good"}
+    q = {x["id"]: x for x in publisher.load_queue()}
+    assert all(q[c].get("rejected") for c in ("noface", "spanish", "long", "slur", "neg"))
+    assert "rejected by rules: 5" in (pub / "daily_report.md").read_text()
+
+
+def test_same_video_twice_is_rejected(pub, cfg, monkeypatch):
+    monkeypatch.setitem(publisher.POSTERS, "youtube", lambda it, st: "yt")
+    monkeypatch.setitem(publisher.POSTERS, "instagram", lambda it, st: "ig")
+    add_clip(pub, "a1", "kaicenat", 10)
+    publisher.run_posting(cfg, now=IN_WINDOW, force=True)
+    add_clip(pub, "a2", "kaicenat", 10)
+    (pub / "a2.mp4").write_bytes((pub / "media" / "a1.mp4").read_bytes())       # identical file, new id
+    (publisher.MEDIA / "a2.mp4").write_bytes((pub / "media" / "a1.mp4").read_bytes())
+    res = publisher.run_posting(cfg, now=IN_WINDOW, force=True)
+    assert res == [] and publisher.load_queue()[1]["rejected"]
 
 
 def test_week2_ramp(pub, cfg):
@@ -187,18 +219,128 @@ def test_vod_pipeline_end_to_end_offline(tmp_path, monkeypatch, cfg, kai):
     monkeypatch.setattr(ytdlp, "download_audio", fake_audio)
     monkeypatch.setattr(transcript, "transcribe_words", fake_words)
     monkeypatch.setattr(ytdlp, "download_section", fake_section)
-    monkeypatch.setattr(vod.vision, "face_focus", lambda v, **k: {"ratio": 0.9, "size": 0.3, "frames": 12})
+    monkeypatch.setattr(vod.vision, "layout_for", lambda v, w, h, o=None: {"mode": "split", "face_ratio": 0.9,
+                                                                         "box": [0.7, 0.0, 0.3, 0.35]})
+    monkeypatch.setattr(vod, "live_moments", lambda: [{"streamer": "kaicenat", "utc": 1_800_000_000 + 600}])
     job = run.Job("https://www.twitch.tv/videos/123", ["twitch:v123"], kai)
-    info = {"id": "v123", "duration": 900, "title": "GTA 6 RP"}
+    info = {"id": "v123", "duration": 900, "title": "GTA 6 RP", "timestamp": 1_800_000_000}
     out = tmp_path / "out"
     out.mkdir()
     clips = vod.process_vod(job, info, cfg, 2, tmp_path / "work", out)
-    assert len(clips) == 2
-    for c in clips:
-        assert 20 <= c["end"] - c["start"] <= 45
-        assert Path(c["file"]).exists() and c["hook"].isupper() and "KAI" in c["hook"] or "GTA 6" in c["hook"]
-        assert abs(c["start"] + 8 - 200) < 12 or abs(c["start"] + 8 - 600) < 12
-        assert c["source"].startswith("https://www.twitch.tv/videos/123?t=")
+    assert len(clips) == 1                       # the spike at 600 s was already clipped live
+    c = clips[0]
+    assert 15 <= c["length"] <= 30.5, c["length"]                      # final video incl. 1.5 s hook
+    assert 195 - 25 <= c["start"] <= 200 - 20 and 200 + 3 <= c["end"] <= 200 + 8, (c["start"], c["end"])
+    assert Path(c["file"]).exists() and "KAI" in c["hook"]
+    assert c["source"].startswith("https://www.twitch.tv/videos/123?t=") and c["layout"] == "split"
     # streamer not on screen -> no clip
-    monkeypatch.setattr(vod.vision, "face_focus", lambda v, **k: {"ratio": 0.1, "size": 0.0, "frames": 12})
+    monkeypatch.setattr(vod.vision, "layout_for", lambda v, w, h, o=None: {"mode": "blur", "face_ratio": 0.1})
     assert vod.process_vod(job, info, cfg, 2, tmp_path / "work2", out) == []
+
+
+
+# ---------- upgrades: hooks, layout, live mode ----------
+def test_event_hooks_tell_what_happens():
+    assert texts.hook_text("yo there's like six cop cars behind us", "Kai", "s") == "KAI GETS CHASED BY 6 COP CARS"
+    assert texts.hook_text("we got five stars now", "Lacy", "s") == "LACY HITS A 5 STAR WANTED LEVEL"
+    assert texts.hook_text("bro is that a gator", "Kai", "s") == "KAI RUNS INTO A GATOR IN GTA 6"
+    assert texts.hook_text("let's rob the bank", "Clix", "s") == "CLIX PULLS OFF A HEIST IN GTA 6"
+    assert texts.hook_text("hello chat", "Kai", "s")                  # falls back to a generic hook
+    assert editor.wrap_hook("KAI GETS CHASED BY 6 COP CARS").count("\n") == 1
+
+
+def test_layout_falls_back_to_blur_without_faces_and_respects_override(tmp_path):
+    v = tmp_path / "v.mp4"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30",
+                    "-t", "2", str(v)], check=True)
+    assert vision.layout_for(v, 1080, 1920)["mode"] == "blur"
+    lay = vision.layout_for(v, 1080, 1920, {"facecam": [0.7, 0.02, 0.28, 0.3]})
+    assert lay == {"mode": "split", "box": [0.7, 0.02, 0.28, 0.3], "face_ratio": 0.0, "auto": False}
+    assert vision.layout_for(v, 1080, 1920, {"layout": "blur", "facecam": [0, 0, 1, 1]})["mode"] == "blur"
+
+
+def test_split_layout_renders_1080x1920(tmp_path):
+    src = tmp_path / "s.mp4"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=1920x1080:rate=30",
+                    "-f", "lavfi", "-i", "sine=frequency=440", "-t", "3", str(src)], check=True)
+    out = editor.make_vertical(src, tmp_path / "o.mp4", "KAI GETS CHASED BY 6 COP CARS", "clip: @KaiCenat",
+                               {"width": 1080, "height": 1920, "font_file": None}, None, None,
+                               {"mode": "split", "box": [0.72, 0.03, 0.26, 0.33]})
+    pr = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "stream=width,height",
+                         "-of", "csv=p=0", str(out)], capture_output=True, text=True).stdout.strip()
+    assert pr == "1080,1920"
+
+
+def test_chat_spike_detection():
+    from clipper import live
+    cfg = load_config(ROOT / "config.yaml")
+    fired = []
+    w = live.ChatWatcher("kaicenat", cfg["live"], lambda now, st: fired.append(st))
+    t = 1000.0
+    for sec in range(600):                                   # 10 min of normal chat: 0.5 msg/s
+        if sec % 2 == 0:
+            w.msgs.append((t + sec, False))
+        if sec % 2 == 0:
+            w.evaluate(t + sec)
+    assert fired == []
+    now = t + 600
+    for i in range(80):                                      # 80 msgs in 20 s, mostly hype
+        w.msgs.append((now + i * 0.25, i % 3 != 0))
+    w.evaluate(now + 20)
+    assert len(fired) == 1 and fired[0]["ratio"] >= 3
+    for i in range(80):
+        w.msgs.append((now + 21 + i * 0.25, True))
+    w.evaluate(now + 41)
+    assert len(fired) == 1                                   # cooldown
+    assert w.is_hype("KEKW KEKW") and w.is_hype("bro no way") and not w.is_hype("hello there")
+
+
+def test_recorder_cut_from_rolling_segments(tmp_path):
+    import os
+    import time as _t
+    from clipper import live
+    cfg = load_config(ROOT / "config.yaml")
+    rec = live.Recorder("kaicenat", cfg["live"], tmp_path / "rec")
+    rec.dir.mkdir(parents=True)
+    now = _t.time()
+    for i in range(8):                                       # 8 x 6 s segments ending now
+        f = rec.dir / f"seg{i:06d}.ts"
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30",
+                        "-f", "lavfi", "-i", "sine=frequency=440", "-t", "6", "-c:v", "libx264", "-c:a", "aac",
+                        "-f", "mpegts", str(f)], check=True)
+        end = now - (7 - i) * 6
+        os.utime(f, (end, end))
+    out = rec.cut(now - 40, now - 10, tmp_path / "cut.mp4")
+    d = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                              str(out)], capture_output=True, text=True).stdout)
+    assert abs(d - 30) < 1.0
+    rec.cfg = dict(rec.cfg, buffer_seconds=20)
+    rec.prune()
+    assert len(list(rec.dir.glob("seg*.ts"))) < 8
+
+
+def test_live_clip_and_instant_post(tmp_path, monkeypatch, pub, cfg):
+    from clipper import live, transcript
+    src = tmp_path / "raw.mp4"                                  # the live cut: 23.5 s before + 5 s after
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=30",
+                    "-f", "lavfi", "-i", "sine=frequency=440", "-t", "28.5", str(src)], check=True)
+    words = [(20 + i * 0.4, 20.35 + i * 0.4, w) for i, w in enumerate("bro six cop cars no way oh my god".split())]
+    monkeypatch.setattr(transcript, "transcribe_words",
+                        lambda wav, model, offset=0.0: ([Seg(20, 24, "bro six cop cars no way oh my god", words)],
+                                                        "en", 0.97))
+    monkeypatch.setattr(live.vision, "layout_for", lambda v, w, h, o=None: {"mode": "blur", "face_ratio": 0.8})
+    st = next(s for s in cfg["streamers"] if s["channel"] == "kaicenat")
+    clip = live.make_live_clip(st, src, {"ratio": 4.0, "messages": 90, "hype": 50}, cfg, tmp_path)
+    assert clip and clip["hook"] == "KAI GETS CHASED BY 6 COP CARS" and clip["score"] >= cfg["live"]["post_min_score"]
+    assert 15 <= clip["length"] <= 30.2
+    out_len = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                                    clip["file"]], capture_output=True, text=True).stdout)
+    assert 15 <= out_len <= 30.2, out_len                        # final video with the 1.5 s hook
+    calls = []
+    monkeypatch.setitem(publisher.POSTERS, "youtube", lambda it, s: calls.append(it["id"]) or "yt/x")
+    monkeypatch.setitem(publisher.POSTERS, "instagram", lambda it, s: calls.append(it["id"]) or "ig/x")
+    publisher.enqueue(clip)
+    add_clip(pub, "older", "kaicenat", 99)                      # a higher score in the queue is NOT posted
+    res = publisher.run_posting(cfg, now=datetime(2026, 11, 20, 15, 0, tzinfo=timezone.utc), force=True,
+                                ids=[clip["id"]])
+    assert [r["platform"] for r in res] == ["youtube", "instagram"] and set(calls) == {clip["id"]}

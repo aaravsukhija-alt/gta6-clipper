@@ -4,17 +4,28 @@
 # Twitch VODs only (live streams are skipped until they end). All have joined Content Rewards.
 streamers:
   - {platform: twitch, channel: kaicenat, name: Kai Cenat, short_name: Kai, credit: "@KaiCenat",
-     hashtag: "#KaiCenat", campaign: "Kai Cenat - Content Rewards", priority: 1, permission: true}
+     hashtag: "#KaiCenat", campaign: "Kai Cenat - Content Rewards",
+     campaign_url: "https://contentrewards.com/c/campaigns/1d2bcb00-c904-415f-aa82-f95b96baad86", priority: 1, permission: true}
   - {platform: twitch, channel: lacy, name: Lacy, short_name: Lacy, credit: "@LACY",
-     hashtag: "#LACY", campaign: "Lacy - Content Rewards", priority: 2, permission: true}
+     hashtag: "#LACY", campaign: "Reach - Content Rewards (Lacy)",
+     campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true}
   - {platform: twitch, channel: clix, name: Clix, short_name: Clix, credit: "@Clix",
-     hashtag: "#Clix", campaign: "Clix - Content Rewards", priority: 2, permission: true}
+     hashtag: "#Clix", campaign: "Reach - Content Rewards (Clix)",
+     campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true}
   - {platform: twitch, channel: yourragegaming, name: YourRAGE, short_name: Rage, credit: "@YourRAGE",
-     hashtag: "#YourRAGE", campaign: "YourRAGE - Content Rewards", priority: 2, permission: true}
+     hashtag: "#YourRAGE", campaign: "Reach - Content Rewards (YourRAGE)",
+     campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true}
   - {platform: twitch, channel: asianjeff, name: AsianJeff, short_name: Jeff, credit: "@AsianJeff",
-     hashtag: "#AsianJeff", campaign: "AsianJeff - Content Rewards", priority: 2, permission: true}
-# Optional per streamer: campaign_url: "https://whop.com/..."  (added to the phone notification)
-# scan_all_videos: true  -> also use VODs whose title doesn't mention GTA 6
+     hashtag: "#AsianJeff", campaign: "Reach - Content Rewards (AsianJeff)",
+     campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true}
+# Optional per streamer (add inside the { } of that streamer):
+#   campaign_url: "https://whop.com/..."   added to the phone notification
+#   facecam: [x, y, w, h]                   fix the face-cam box if auto-detect is wrong. Fractions of the
+#                                           stream frame, e.g. [0.70, 0.02, 0.28, 0.30] = top-right corner.
+#                                           Each run's summary shows the box it detected - copy it from there.
+#   layout: blur                            never use the face-cam-on-top layout for this streamer
+#   live: false                             don't watch this streamer live
+#   scan_all_videos: true                   also use VODs whose title doesn't mention GTA 6
 
 keywords: [gta 6, gta six, gta vi, gta6, grand theft auto 6, grand theft auto vi, grand theft auto six]
 context_terms: [vice city, leonida, lucia, jason, rockstar, heist, wanted level, five star, cops, police]
@@ -50,14 +61,14 @@ moments:
   min_loudness_z: 2.0
   candidates_per_vod: 8           # best-scoring spots that get cut and face-checked
   keep_per_streamer_per_run: 2
-  seconds_before_peak: 8
-  target_seconds: 32
-  min_seconds: 20
-  max_seconds: 45
+  seconds_before_peak: 25         # build-up before the spike
+  seconds_after_peak: 5           # reaction after it
+  target_seconds: 30
+  min_seconds: 15                 # final clip length incl. the 1.5 s hook: 15-30 s
+  max_seconds: 30
   min_score: 4
   min_english_prob: 0.7
-  min_face_height: 0.10           # face must be >= 10% of the frame height ...
-  min_face_ratio: 0.5             # ... in at least half of the sampled frames (streamer is the focus)
+  min_face_ratio: 0.5             # streamer's face must be visible in at least half of the frames
   weights: {loudness: 1.0, hype: 1.5, keyword: 1.0, reaction_tag: 2}
 
 # kept for YouTube links / links.txt (older caption-based flow)
@@ -78,6 +89,27 @@ edit:
   font_file: null
   width: 1080
   height: 1920
+
+live:
+  enabled: true                   # run on the laptop with start_live.cmd (no AI credits used)
+  require_gta: true
+  twitch_game_names: ["Grand Theft Auto VI"]
+  poll_seconds: 120               # how often to check who is live
+  quality: "720p60,720p,480p,best"
+  segment_seconds: 6
+  buffer_seconds: 180             # minutes of stream kept on disk: 3
+  window_seconds: 30              # chat speed is measured over 30 s ...
+  spike_multiplier: 3.0           # ... a spike = 3x the normal speed ...
+  min_messages: 40                # ... with at least this many messages ...
+  hype_share: 0.25                # ... and at least 25% hype messages
+  hype_words: [kekw, lul, lmao, lmfao, lol, omegalul, w, wtf, pog, poggers, no way, clip it, clip, "😂", "💀", "😭", "🔥"]
+  reaction_delay: 4               # chat reacts ~4 s after the moment
+  seconds_before: 25
+  seconds_after: 5
+  cooldown_seconds: 300           # max one clip per 5 min per streamer
+  max_clips_per_stream: 12
+  post_min_score: 6               # live clips at/above this post within minutes; others wait for the window
+  weights: {chat: 1.5, hype: 1.5, loudness: 1.0}
 
 posting:
   auto: false                     # turned on after the Kai Cenat test passes (require_approval: false)

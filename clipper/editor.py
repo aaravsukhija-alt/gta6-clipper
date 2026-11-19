@@ -134,14 +134,34 @@ def export_original(src: Path, dest: Path) -> Path:
     return dest
 
 
+def wrap_hook(text: str, max_chars: int = 18) -> str:
+    """Hook on at most 2 lines so it never runs off the screen."""
+    words, lines, cur = text.split(), [], ""
+    for w in words:
+        if cur and len(cur) + 1 + len(w) > max_chars:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = f"{cur} {w}".strip()
+    lines.append(cur)
+    if len(lines) > 2:
+        lines = [lines[0], " ".join(lines[1:])]
+    return "\n".join(lines)
+
+
 def make_vertical(src: Path, dest: Path, headline: str, credit: str, edit: dict,
-                  ass_file: Path | None = None, teaser: tuple[float, float] | None = None) -> Path:
-    """All helper files are copied into a temp folder and ffmpeg runs *inside* it, so the
-    filter text only uses plain relative names (Windows paths like C:\\ break ffmpeg filters)."""
+                  ass_file: Path | None = None, teaser: tuple[float, float] | None = None,
+                  layout: dict | None = None) -> Path:
+    """9:16 video. layout {'mode': 'split', 'box': [x, y, w, h]} = face cam on top + gameplay below;
+    anything else = blurred-background layout. All helper files are copied into a temp folder and ffmpeg
+    runs inside it, so the filter text only uses plain relative names (Windows paths break filters)."""
     w, h = edit["width"], edit["height"]
     src, dest = Path(src).resolve(), Path(dest).resolve()
     tmp = Path(tempfile.mkdtemp())
-    (tmp / "head.txt").write_text(headline, encoding="utf-8")
+    split = bool(layout and layout.get("mode") == "split" and layout.get("box"))
+    hook_lines = wrap_hook(headline).split("\n") if headline else []
+    for i, ln in enumerate(hook_lines):
+        (tmp / f"head{i}.txt").write_text(ln, encoding="utf-8")
     (tmp / "credit.txt").write_text(credit, encoding="utf-8")
     font, _ = pick_font(edit.get("font_file"))
     fontopt = ""
@@ -149,14 +169,27 @@ def make_vertical(src: Path, dest: Path, headline: str, credit: str, edit: dict,
         shutil.copy(font, tmp / "font.ttf")
         fontopt = "fontfile=font.ttf:"
 
-    def text(file: str, size: int, y: str) -> str:
-        return (f"drawtext={fontopt}textfile={file}:fontsize={size}:fontcolor=white:"
-                f"borderw={max(2, size // 14)}:bordercolor=black:x=(w-text_w)/2:y={y}")
+    def text(file: str, size: int, y: str, box: bool = False) -> str:
+        boxopt = ":box=1:boxcolor=black@0.65:boxborderw=18" if box else ""
+        return (f"drawtext={fontopt}textfile={file}:fontsize={size}:fontcolor=white:line_spacing=8:"
+                f"borderw={max(2, size // 14)}:bordercolor=black:x=(w-text_w)/2:y={y}{boxopt}")
 
-    chain = (f"[0:v]split=2[a][b];"
-             f"[a]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},boxblur=25:2[bg];"
-             f"[b]scale={w}:-2[fg];"
-             f"[bg][fg]overlay=(W-w)/2:(H-h)/2")
+    if split:
+        bx, by, bw, bh = layout["box"]
+        top_h = int(h * 0.40) // 2 * 2
+        bot_h = h - top_h
+        chain = (f"[0:v]split=2[a][b];"
+                 f"[a]crop=iw*{bw}:ih*{bh}:iw*{bx}:ih*{by},scale={w}:{top_h}:force_original_aspect_ratio=increase,"
+                 f"crop={w}:{top_h}[top];"
+                 f"[b]scale=-2:{bot_h},crop={w}:{bot_h}[bot];"
+                 f"[top][bot]vstack=inputs=2")
+        hook_y = f"{top_h}-text_h/2"           # hook sits on the seam between face cam and gameplay
+    else:
+        chain = (f"[0:v]split=2[a][b];"
+                 f"[a]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},boxblur=25:2[bg];"
+                 f"[b]scale={w}:-2[fg];"
+                 f"[bg][fg]overlay=(W-w)/2:(H-h)/2")
+        hook_y = str(int(h * 0.12))
     audio_map = "0:a:0?"
     if teaser and has_audio(src):
         # hook: show the peak moment (teaser) first, then the whole clip from the start
@@ -169,10 +202,13 @@ def make_vertical(src: Path, dest: Path, headline: str, credit: str, edit: dict,
                   f"[a2]asetpts=PTS-STARTPTS[ma];"
                   f"[tv][ta][mv][ma]concat=n=2:v=1:a=1[cv][ca];[cv]null")
         audio_map = "[ca]"
-    if headline:
-        chain += "," + text("head.txt", int(h * 0.045), str(int(h * 0.12)))
+    size = int(h * 0.040)
+    line_h = int(size * 1.35)
+    for i in range(len(hook_lines)):              # one drawtext per line so every line is centred
+        y = f"({hook_y})-{(len(hook_lines) - 1) * line_h // 2}+{i * line_h}"
+        chain += "," + text(f"head{i}.txt", size, y, box=True)
     if credit:
-        chain += "," + text("credit.txt", int(h * 0.028), f"h-{int(h * 0.10)}")
+        chain += "," + text("credit.txt", int(h * 0.026), f"h-{int(h * 0.07)}")
     if ass_file:
         shutil.copy(ass_file, tmp / "cap.ass")
         chain += ",ass=filename=cap.ass" + (":fontsdir=." if font else "")

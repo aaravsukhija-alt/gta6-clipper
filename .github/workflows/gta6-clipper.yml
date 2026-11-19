@@ -2,8 +2,9 @@ name: GTA 6 clipper
 
 on:
   schedule:
-    - cron: "17 */3 * * *"             # every 3 hours: find VODs, make clips (and post if it's posting time)
-    - cron: "*/30 23,0,1,2,3,4 * * *"  # every 30 min, 4:30-10:30 IST: post queued clips (US evening)
+    # every 3 hours. Each run lasts ~2 h 45 min on the laptop: live mode (chat spikes) + VOD backup
+    # + the posting clock (posts spread over 5-10 AM India time), then saves and hands over.
+    - cron: "17 */3 * * *"
   workflow_dispatch:
     inputs:
       test_streamer:
@@ -32,15 +33,14 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-
-env:
-  POST_ONLY: ${{ github.event.schedule == '*/30 23,0,1,2,3,4 * * *' && '1' || '' }}
+  contents: write      # save the posting log + daily report
+  issues: write        # comment each posted clip on the "Clips to submit" issue
+  actions: read        # notice a waiting manual run and hand over early
 
 jobs:
   clip:
     runs-on: ${{ vars.CLIPPER_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 340
+    timeout-minutes: 200
     defaults:
       run:
         # On a Windows PC "bash" can start WSL; use Git Bash (short path: GitHub can't take spaces here)
@@ -57,26 +57,6 @@ jobs:
         if: runner.environment == 'github-hosted'
         with:
           deno-version: v2.x
-
-      - name: Install ffmpeg + fonts
-        timeout-minutes: 10
-        working-directory: ${{ runner.temp }}
-        run: |
-          if command -v ffmpeg >/dev/null 2>&1; then
-            echo "ffmpeg already installed: $(command -v ffmpeg)"
-          elif [ "$RUNNER_OS" = "Linux" ]; then
-            curl -fsSL --retry 3 -o ffmpeg.tar.xz \
-              https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
-            tar -xf ffmpeg.tar.xz
-            echo "$PWD/$(ls -d ffmpeg-*-linux64-gpl)/bin" >> "$GITHUB_PATH"
-          else
-            echo "::error::ffmpeg is not installed on this PC. See README.md, 'Run on your own PC'."
-            exit 1
-          fi
-          if [ "$RUNNER_OS" = "Linux" ] && [ ! -f /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf ]; then
-            sudo timeout 300 apt-get install -y -qq --no-install-recommends fonts-dejavu-core \
-              || (sudo timeout 200 apt-get update -qq && sudo timeout 300 apt-get install -y -qq fonts-dejavu-core)
-          fi
 
       - name: Python environment
         timeout-minutes: 30
@@ -97,6 +77,36 @@ jobs:
           if command -v cygpath >/dev/null 2>&1; then BIN="$(cygpath -w "$BIN")"; fi
           echo "$BIN" >> "$GITHUB_PATH"
 
+      - name: Install ffmpeg + fonts
+        timeout-minutes: 10
+        working-directory: ${{ runner.temp }}
+        run: |
+          if command -v ffmpeg >/dev/null 2>&1; then
+            echo "ffmpeg already installed: $(command -v ffmpeg)"
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            # the runner may not see a winget-installed ffmpeg; keep our own copy in the user folder
+            T="$HOME/.gta6clipper-tools"; mkdir -p "$T"
+            if [ ! -x "$T/ffmpeg/bin/ffmpeg.exe" ]; then
+              curl -fsSL --retry 3 -o "$T/ffmpeg.zip" \
+                https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip
+              python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$(cygpath -w "$T/ffmpeg.zip")" "$(cygpath -w "$T")"
+              rm -rf "$T/ffmpeg"; mv "$T"/ffmpeg-*-win64-gpl "$T/ffmpeg"; rm -f "$T/ffmpeg.zip"
+            fi
+            cygpath -w "$T/ffmpeg/bin" >> "$GITHUB_PATH"
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            curl -fsSL --retry 3 -o ffmpeg.tar.xz \
+              https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
+            tar -xf ffmpeg.tar.xz
+            echo "$PWD/$(ls -d ffmpeg-*-linux64-gpl)/bin" >> "$GITHUB_PATH"
+          else
+            echo "::error::ffmpeg is not installed on this PC. See README.md, 'Run on your own PC'."
+            exit 1
+          fi
+          if [ "$RUNNER_OS" = "Linux" ] && [ ! -f /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf ]; then
+            sudo timeout 300 apt-get install -y -qq --no-install-recommends fonts-dejavu-core \
+              || (sudo timeout 200 apt-get update -qq && sudo timeout 300 apt-get install -y -qq fonts-dejavu-core)
+          fi
+
       - name: Cache Whisper models
         if: runner.environment == 'github-hosted'
         uses: actions/cache@v4
@@ -105,7 +115,6 @@ jobs:
           key: whisper-models-v1
 
       - name: Offline tests
-        if: env.POST_ONLY != '1'
         timeout-minutes: 15
         run: ffmpeg -version | head -1 && python -m pytest -q tests
 
@@ -119,6 +128,7 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: python tests/live_check.py
 
       - name: Find VODs, make clips, post
@@ -134,6 +144,7 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: python -m clipper.main
 
       - name: Show summary

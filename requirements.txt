@@ -6,3 +6,4 @@ pytest>=8.0
 opencv-python-headless>=4.9,<5   # face check (OpenCV 5 dropped the Haar face detector)
 numpy>=1.26
 composio>=0.33,<0.34          # posting to YouTube/Instagram through Composio's approved apps
+streamlink>=7.0                 # live mode recording (ads filtered)

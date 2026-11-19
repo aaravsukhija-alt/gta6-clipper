@@ -131,18 +131,27 @@ check("full pipeline on a Twitch clip", pipeline)
 
 def composio_accounts():
     if not os.getenv("COMPOSIO_API_KEY"):
-        return "skipped (COMPOSIO_API_KEY secret not set yet)"
-    from clipper import publisher
+        raise RuntimeError("COMPOSIO_API_KEY secret is not set")
+    from clipper import notify, publisher
+    acc = publisher.find_accounts()
+    missing = [t for t in ("youtube", "instagram") if t not in acc]
+    for t in missing:
+        link = publisher.connect_link(t)
+        notify.send(f"🔗 Composio can't see your **{t}** account with this API key. Connect it here "
+                    f"(one click, log in to the right account): {link}")
+    if missing:
+        raise RuntimeError(f"not visible to this API key's Composio project: {missing} (connect link sent)")
     ig = publisher._exec("INSTAGRAM_GET_USER_INFO", {"ig_user_id": "me", "fields": "id,username,account_type"})
-    return f"Instagram @{ig.get('username')} ({ig.get('account_type')}) connected"
+    uid = acc["youtube"]["user_id"] or ""
+    return (f"YouTube + Instagram found (user id ...{uid[-4:]}); Instagram @{ig.get('username')} "
+            f"({ig.get('account_type')})")
 
 
 def notify_check():
     from clipper import notify
-    if not (os.getenv("DISCORD_WEBHOOK_URL") or os.getenv("TELEGRAM_BOT_TOKEN")):
-        return "skipped (no Discord/Telegram secret yet)"
-    assert notify.send("🔧 gta6-clipper self-test: notifications work"), "notification failed"
-    return "test message sent"
+    assert notify.send("🔧 gta6-clipper self-test: notifications work. Posted clips will appear here."), \
+        "notification failed"
+    return f"comment posted on issue #{notify.issue_number()}" + (" + Discord" if os.getenv("DISCORD_WEBHOOK_URL") else "")
 
 
 check("composio (instagram) connection", composio_accounts)

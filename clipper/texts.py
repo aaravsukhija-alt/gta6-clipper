@@ -29,7 +29,50 @@ def _pick(options: list[str], seed: str) -> str:
     return options[int(hashlib.md5(seed.encode()).hexdigest(), 16) % len(options)]
 
 
+NUM = r"(\d+|two|three|four|five|six|seven|eight|nine|ten|twenty)"
+NUMS = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+        "twenty": 20}
+# (pattern, hook) - what a stranger is about to see. Checked against the transcript; later matches
+# (closer to the spike) win ties. {n} = name, {k} = number from the match.
+EVENTS = [
+    (rf"\b{NUM} (cop|police) (cars?|cruisers?)\b", "{n} GETS CHASED BY {k} COP CARS"),
+    (rf"\b{NUM} cops\b", "{n} VS {k} COPS IN GTA 6"),
+    (rf"\b{NUM}[- ]stars?\b", "{n} HITS A {k} STAR WANTED LEVEL"),
+    (r"\b(wanted level|stars on me)\b", "{n} GETS A WANTED LEVEL IN GTA 6"),
+    (r"\b(cops?|police)\b.*\b(chas\w*|run|running|lose them|escape)\b|\b(chas\w*|run|running|escape)\b.*\b(cops?|police)\b",
+     "{n} TRIES TO ESCAPE THE COPS"),
+    (r"\b(alligator|gator|crocodile)s?\b", "{n} RUNS INTO A GATOR IN GTA 6"),
+    (r"\b(heist|rob(bing|bed)?|bank job|vault)\b", "{n} PULLS OFF A HEIST IN GTA 6"),
+    (r"\b(helicopter|heli|chopper)\b", "{n} TRIES TO FLY A HELICOPTER"),
+    (r"\b(plane|jet)\b", "{n} TRIES TO FLY A PLANE"),
+    (r"\b(boat|jet ?ski|speedboat)\b", "{n} TAKES A BOAT OUT IN VICE CITY"),
+    (r"\b(blew up|blow (it|this|him|that) up|explod\w*|explosion|grenade|rpg)\b", "{n} BLOWS EVERYTHING UP"),
+    (r"\b(crash(ed|ing)?|wreck(ed)?|flipped)\b", "{n} CRASHES AT FULL SPEED"),
+    (r"\b(jump|ramp|flip|stunt)\b", "{n} ATTEMPTS A CRAZY JUMP"),
+    (r"\b(beach|ocean|vice beach)\b", "{n} CAUSES CHAOS ON THE BEACH"),
+    (r"\b(million|money|cash|bands)\b", "{n} MAKES BANK IN GTA 6"),
+    (r"\b(lucia)\b", "{n} PLAYS AS LUCIA FOR THE FIRST TIME"),
+]
+
+
+def event_hook(transcript_text: str, short_name: str) -> str | None:
+    t = (transcript_text or "").lower()
+    best = None
+    for pat, hook in EVENTS:
+        for m in re.finditer(pat, t):
+            k = next((g for g in m.groups() if g and (g.isdigit() or g in NUMS)), None) if m.groups() else None
+            k = str(NUMS.get(k, k)) if k else ""
+            if "{k}" in hook and not k:
+                continue
+            if best is None or m.start() > best[0] or (m.start() == best[0] and len(hook) > len(best[1])):
+                best = (m.start(), hook.format(n=short_name.upper(), k=k))
+    return best[1] if best else None
+
+
 def hook_text(excerpt: str, short_name: str, seed: str) -> str:
+    ev = event_hook(excerpt, short_name)
+    if ev:
+        return ev
     for triggers, options in HOOKS:
         if find_terms(excerpt, triggers):
             return _pick(options, seed).format(n=short_name.upper())
@@ -68,4 +111,15 @@ def check_caption(streamer: dict, caption: str) -> list[str]:
         problems.append("caption has non-English characters")
     if not is_clean(caption):
         problems.append("caption has blocked words")
+    if not is_positive(caption):
+        problems.append("caption is negative / drama")
     return problems
+
+
+NEGATIVE = re.compile(r"\b(fail(s|ed)?|cringe|worst|trash|exposed|caught lying|cancel(l)?ed|drama|beef|"
+                      r"meltdown|disgusting|toxic|hates?|ruin(s|ed)?|scam)\b", re.I)
+
+
+def is_positive(text: str) -> bool:
+    """Hooks/captions must not be negative about the streamer or invent drama."""
+    return not NEGATIVE.search(text or "")
