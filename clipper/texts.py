@@ -55,7 +55,7 @@ EVENTS = [
     (r"\b(glitch(ed)?|bugged|bug)\b", "GTA 6 GLITCHED AND {n} LOST IT"),
     (r"\b(danc(e|ing))\b", "{n} STARTS DANCING ON STREAM"),
     (r"\b(donation|dono|gifted|thank you for the)\b", "THIS DONATION MADE {n} LOSE IT"),
-    (r"\b(roast(ed|ing)?|violated)\b", "CHAT ROASTED {n} AND HE LOST IT"),
+    (r"\b(roast(ed|ing)?|violated)\b", "{n} GETS ROASTED BY CHAT"),
     (r"\bchat\b.*\b(look|what|why|bro)\b", "{n} CANNOT BELIEVE WHAT CHAT SAID"),
 ]
 
