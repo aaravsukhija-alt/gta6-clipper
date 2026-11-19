@@ -16,9 +16,23 @@ ROOT = Path(__file__).resolve().parent.parent
 HAS_FFMPEG = shutil.which("ffmpeg") is not None
 
 
+def legacy_cfg():
+    """Settings these older tests were written for (caption-based flow), independent of config.yaml edits."""
+    c = load_config(ROOT / "config.yaml")
+    c["streamers"] = []
+    c["hype_phrases"] = ["no way", "oh my god", "what the", "let's go", "holy", "bro", "insane", "crazy", "wtf",
+                         "are you kidding", "i can't believe"]
+    c["selection"].update(clips_per_video=3, target_seconds=45, min_seconds=15, max_seconds=59, min_score=4,
+                          weights={"keyword": 3, "context": 1, "hype": 1, "reaction_tag": 2, "most_replayed": 6})
+    c["edit"]["keep_original"] = True
+    c["transcript"].update(caption_wait_runs=2, whisper_max_minutes=480)
+    c["discovery"]["min_date"] = None
+    return c
+
+
 @pytest.fixture
 def cfg():
-    return load_config(ROOT / "config.yaml")
+    return legacy_cfg()
 
 
 def json3(lines):
@@ -166,6 +180,7 @@ def test_full_run_offline(tmp_path, monkeypatch, cfg):
     monkeypatch.setattr(st, "STATE_FILE", tmp_path / "state.json")
     monkeypatch.setattr(run, "State", lambda: State(tmp_path / "state.json"))
     monkeypatch.setattr(run, "read_links", lambda: config.read_links(tmp_path / "links.txt"))
+    monkeypatch.setattr(run, "load_config", lambda path=None: legacy_cfg())
 
     cap_lines = [(i * 3, i * 3 + 3, "walking around") for i in range(400)]
     cap_lines[50] = (150, 153, "GTA 6 cops are insane bro")
@@ -259,6 +274,7 @@ def test_blocked_site_is_retried_not_given_up(tmp_path, monkeypatch):
     def blocked(url):
         raise ytdlp.YtDlpError("ERROR: [youtube] B: Sign in to confirm you\u2019re not a bot.")
     monkeypatch.setattr(ytdlp, "video_info", blocked)
+    monkeypatch.setattr(run, "load_config", lambda path=None: legacy_cfg())
     for _ in range(4):
         assert run.main([]) == 1                # run fails -> GitHub emails you
     s = State(tmp_path / "s.json")

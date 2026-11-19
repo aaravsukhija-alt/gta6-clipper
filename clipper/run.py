@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import editor, transcript, ytdlp
+from . import editor, transcript, vod, ytdlp
 from .config import OUTPUT, load_config, read_links
 from .selector import find_moments
 from .state import State
@@ -38,6 +38,40 @@ class Report:
     clips: list[dict] = field(default_factory=list)
     videos: list[dict] = field(default_factory=list)
     errors: int = 0
+    per_streamer: dict = field(default_factory=dict)
+    queued: list[dict] = field(default_factory=list)
+
+
+def _before_min_date(info: dict, cfg: dict) -> bool:
+    md = cfg["discovery"].get("min_date")
+    ts = info.get("timestamp") or info.get("release_timestamp")
+    if not md or not ts:
+        return False
+    return datetime.fromtimestamp(ts, timezone.utc).date().isoformat() < str(md)
+
+
+def process_twitch_vod(job, info, cfg, state, keys, title, run_dir, report) -> str:
+    st = job.streamer
+    cap = cfg["moments"]["keep_per_streamer_per_run"]
+    have = report.per_streamer.get(st["channel"], 0)
+    if have >= cap:
+        state.set(keys, "deferred", note="streamer already has enough clips this run", title=title)
+        return "later (enough clips from this streamer this run)"
+    work = Path(tempfile.mkdtemp(prefix="gta6_"))
+    try:
+        clips = vod.process_vod(job, info, cfg, cap - have, work, run_dir)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    for c in clips:
+        report.queued.append(c)
+        report.clips.append({"files": [Path(c["file"]).name], "credit": st["credit"], "video_title": title,
+                             "source": c["source"], "start": c["start"], "end": c["end"], "length": c["length"],
+                             "score": c["score"], "why": c["why"], "transcript": c["transcript"],
+                             "transcript_source": "whisper", "hook": c["hook"], "face_ratio": c["face_ratio"],
+                             "suggested_caption": ""})
+    report.per_streamer[st["channel"]] = have + len(clips)
+    state.set(keys, "done", clips=len(clips), title=title, note="twitch vod pipeline")
+    return f"{len(clips)} clip(s)"
 
 
 def log(msg: str):
@@ -150,6 +184,10 @@ def process(job: Job, cfg: dict, state: State, run_dir: Path, report: Report) ->
         state.set(keys, "deferred", note=f"stream not finished ({info.get('live_status')})", title=title)
         return "waiting for the stream to end"
 
+    if not job.forced and _before_min_date(info, cfg):
+        state.set(keys, "skipped", note=f"before {cfg['discovery']['min_date']}", title=title)
+        return "before the start date"
+
     age = _age_days(info)
     if not job.forced and age is not None and age > cfg["discovery"]["max_age_days"]:
         state.set(keys, "skipped", note=f"older than {cfg['discovery']['max_age_days']} days", title=title)
@@ -160,6 +198,9 @@ def process(job: Job, cfg: dict, state: State, run_dir: Path, report: Report) ->
     if not title_relevant and not job.streamer.get("scan_all_videos"):
         state.set(keys, "skipped", note="not a GTA 6 video", title=title)
         return "not GTA 6"
+
+    if str(info.get("extractor_key", "")).startswith("TwitchVod") and job.streamer.get("channel"):
+        return process_twitch_vod(job, info, cfg, state, keys, title, run_dir, report)
 
     tcfg = cfg["transcript"]
     work = Path(tempfile.mkdtemp(prefix="gta6_"))
@@ -250,7 +291,12 @@ def main(argv=None) -> int:
     ap.add_argument("--url", action="append", default=[], help="extra video link(s) to clip")
     ap.add_argument("--config")
     ap.add_argument("--no-links", action="store_true", help="ignore links.txt")
+    ap.add_argument("--streamer", help="only this channel (test)")
     args = ap.parse_args(argv)
+    return run_clips(args)
+
+
+def run_clips(args, on_clips=None, between=None) -> int:
 
     cfg = load_config(args.config)
     state = State()
@@ -261,6 +307,8 @@ def main(argv=None) -> int:
 
     extra = [u.strip() for u in args.url if u and u.strip()]
     try:
+        if getattr(args, "streamer", None):
+            cfg["streamers"] = [x for x in cfg["streamers"] if x.get("channel") == args.streamer]
         jobs = discover(cfg, state, extra, not args.no_links)
         state.save()
         cap = cfg["discovery"]["max_videos_per_run"]
@@ -281,6 +329,11 @@ def main(argv=None) -> int:
             log(f"  -> {result}")
             report.videos.append({"url": job.url, "title": state.get(job.keys[0]).get("title", ""), "result": result})
             state.save()
+            if on_clips and report.queued:
+                on_clips(report.queued)
+                report.queued = []
+            if between:
+                between()
     finally:
         state.save()
         write_summary(report, run_dir, started)

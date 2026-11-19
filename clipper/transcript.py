@@ -2,7 +2,7 @@
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import ytdlp
@@ -13,6 +13,7 @@ class Seg:
     start: float
     end: float
     text: str
+    words: list = field(default_factory=list)   # [(start, end, word)] when Whisper word timing is on
 
 
 def parse_json3(data: dict) -> list[Seg]:
@@ -95,12 +96,32 @@ def captions(info: dict, languages: list[str], workdir: Path) -> list[Seg]:
     return parse_json3(json.loads(raw)) if path.suffix == ".json3" else parse_vtt(raw)
 
 
-def transcribe_file(audio: Path, model_name: str, language: str | None) -> list[Seg]:
+_MODELS: dict = {}
+
+
+def _model(name: str):
     from faster_whisper import WhisperModel   # imported lazily: heavy
-    model = WhisperModel(model_name, device="cpu", compute_type="int8", cpu_threads=os.cpu_count() or 2)
-    it, _ = model.transcribe(str(audio), language=language or None, vad_filter=True,
-                             beam_size=1, condition_on_previous_text=False)
+    if name not in _MODELS:
+        _MODELS[name] = WhisperModel(name, device="cpu", compute_type="int8", cpu_threads=os.cpu_count() or 2)
+    return _MODELS[name]
+
+
+def transcribe_file(audio: Path, model_name: str, language: str | None) -> list[Seg]:
+    it, _ = _model(model_name).transcribe(str(audio), language=language or None, vad_filter=True,
+                                          beam_size=1, condition_on_previous_text=False)
     return normalize([Seg(s.start, s.end, s.text.strip()) for s in it])
+
+
+def transcribe_words(audio: Path, model_name: str, offset: float = 0.0) -> tuple[list[Seg], str, float]:
+    """Transcript with per-word timing, shifted by offset. Returns (segments, language, language prob)."""
+    it, info = _model(model_name).transcribe(str(audio), vad_filter=True, beam_size=1, word_timestamps=True,
+                                             condition_on_previous_text=False)
+    segs = []
+    for s in it:
+        words = [(w.start + offset, w.end + offset, w.word.strip()) for w in (s.words or []) if w.word.strip()]
+        if s.text.strip():
+            segs.append(Seg(s.start + offset, s.end + offset, s.text.strip(), words))
+    return normalize(segs), info.language, float(info.language_probability)
 
 
 def whisper(url: str, model_name: str, language: str | None, workdir: Path) -> list[Seg]:

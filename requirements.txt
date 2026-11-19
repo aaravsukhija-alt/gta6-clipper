@@ -3,3 +3,6 @@ PyYAML>=6.0
 faster-whisper>=1.1
 av>=15,<16          # faster-whisper 1.2 breaks with PyAV 16+ (metadata_errors removed)
 pytest>=8.0
+opencv-python-headless>=4.9,<5   # face check (OpenCV 5 dropped the Haar face detector)
+numpy>=1.26
+composio>=0.33,<0.34          # posting to YouTube/Instagram through Composio's approved apps

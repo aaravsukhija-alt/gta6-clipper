@@ -2,43 +2,59 @@ name: GTA 6 clipper
 
 on:
   schedule:
-    - cron: "17 */3 * * *"        # every 3 hours (UTC). GitHub may start it a few minutes late.
-  workflow_dispatch:               # "Run workflow" button on the Actions tab
+    - cron: "17 */3 * * *"             # every 3 hours: find VODs, make clips (and post if it's posting time)
+    - cron: "*/30 23,0,1,2,3,4 * * *"  # every 30 min, 4:30-10:30 IST: post queued clips (US evening)
+  workflow_dispatch:
     inputs:
-      url:
-        description: "Optional: a video link to clip right now"
+      test_streamer:
+        description: "Test: make clips for ONE streamer (e.g. kaicenat) without posting; saves previews"
         required: false
         default: ""
+      post_now:
+        description: "Post the best queued clip right now (1 per platform), ignoring the time window"
+        type: boolean
+        default: false
+      reset_errors:
+        description: "Re-enable platforms that were stopped after an error"
+        type: boolean
+        default: false
       self_test:
         description: "Only run the connection self-test"
         type: boolean
         default: false
+      url:
+        description: "Optional: one video link to clip right now"
+        required: false
+        default: ""
 
 concurrency:
-  group: gta6-clipper              # never two runs at once
+  group: gta6-clipper
   cancel-in-progress: false
 
 permissions:
-  contents: write                  # to save state/processed.json back to the repo
+  contents: write
+
+env:
+  POST_ONLY: ${{ github.event.schedule == '*/30 23,0,1,2,3,4 * * *' && '1' || '' }}
 
 jobs:
   clip:
-    # Where it runs: GitHub's cloud by default. Set the repository variable
-    # CLIPPER_RUNNER = self-hosted to run on your own PC (needed for YouTube).
     runs-on: ${{ vars.CLIPPER_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 340
     defaults:
       run:
-        shell: bash                # on Windows this is Git Bash
+        # On a Windows PC "bash" can start WSL; use Git Bash (short path: GitHub can't take spaces here)
+        shell: ${{ vars.CLIPPER_SHELL || (vars.CLIPPER_RUNNER == 'self-hosted' && 'C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}') || 'bash' }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
-        if: runner.environment == 'github-hosted'     # on your PC, your own Python is used
+        if: runner.environment == 'github-hosted'
         with:
           python-version: "3.12"
 
-      - uses: denoland/setup-deno@v2    # yt-dlp needs a JavaScript runtime for YouTube
+      - uses: denoland/setup-deno@v2    # only needed for YouTube downloads; broken on Windows PCs
+        if: runner.environment == 'github-hosted'
         with:
           deno-version: v2.x
 
@@ -63,7 +79,7 @@ jobs:
           fi
 
       - name: Python environment
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: |
           PY=""
           for c in python3.12 python3.13 python3.11 python3.10 python3 python py; do
@@ -72,6 +88,7 @@ jobs:
             fi
           done
           if [ -z "$PY" ]; then echo "::error::Python 3.10+ not found. See README."; exit 1; fi
+          echo "using $PY ($("$PY" --version))"
           VENV="$HOME/.gta6clipper-venv"
           [ -d "$VENV" ] || "$PY" -m venv "$VENV"
           if [ -d "$VENV/Scripts" ]; then BIN="$VENV/Scripts"; else BIN="$VENV/bin"; fi
@@ -88,32 +105,36 @@ jobs:
           key: whisper-models-v1
 
       - name: Offline tests
+        if: env.POST_ONLY != '1'
         timeout-minutes: 15
         run: ffmpeg -version | head -1 && python -m pytest -q tests
-
-      - name: Optional YouTube cookies (only if YouTube blocks the server)
-        env:
-          YT_COOKIES: ${{ secrets.YT_COOKIES }}
-        run: |
-          if [ -n "$YT_COOKIES" ]; then
-            printf '%s\n' "$YT_COOKIES" > "$RUNNER_TEMP/cookies.txt"
-            echo "YTDLP_COOKIES_FILE=$RUNNER_TEMP/cookies.txt" >> "$GITHUB_ENV"
-          fi
 
       - name: Connection self-test
         if: inputs.self_test
         timeout-minutes: 45
         env:
-          # GitHub's cloud servers are known to be blocked by YouTube; on your PC YouTube must pass
           CLIPPER_YOUTUBE_OPTIONAL: ${{ runner.environment == 'github-hosted' && '1' || '' }}
+          COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+          COMPOSIO_USER_ID: ${{ secrets.COMPOSIO_USER_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python tests/live_check.py
 
-      - name: Find new videos and make clips
+      - name: Find VODs, make clips, post
         id: clip
         if: ${{ !inputs.self_test }}
         env:
           EXTRA_URL: ${{ inputs.url }}
-        run: python -m clipper.run --url "$EXTRA_URL"
+          TEST_STREAMER: ${{ inputs.test_streamer }}
+          POST_NOW: ${{ inputs.post_now && '1' || '' }}
+          RESET_ERRORS: ${{ inputs.reset_errors && '1' || '' }}
+          COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+          COMPOSIO_USER_ID: ${{ secrets.COMPOSIO_USER_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m clipper.main
 
       - name: Show summary
         if: always() && steps.clip.conclusion != 'skipped'
@@ -133,14 +154,14 @@ jobs:
         if: always()
         run: rm -rf output
 
-      - name: Save memory of processed videos
+      - name: Save memory, queue, posting log and daily report
         if: always() && steps.clip.conclusion != 'skipped'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898+github-actions[bot]@users.noreply.github.com"
-          git add state/processed.json 2>/dev/null || exit 0
+          for p in state daily_report.md previews; do if [ -e "$p" ]; then git add "$p"; fi; done
           git diff --cached --quiet && exit 0
-          git commit -m "clipper: update processed videos [skip ci]"
+          git commit -q -m "clipper: update state and daily report [skip ci]"
           for i in 1 2 3; do
             git pull --rebase -q origin "$GITHUB_REF_NAME" && git push -q origin "HEAD:$GITHUB_REF_NAME" && exit 0
             sleep 5

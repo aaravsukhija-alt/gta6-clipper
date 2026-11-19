@@ -19,7 +19,7 @@ import yaml  # noqa: E402
 from clipper import editor, run, transcript, ytdlp  # noqa: E402
 from clipper.state import State  # noqa: E402
 
-YT_OPTIONAL = os.getenv("CLIPPER_YOUTUBE_OPTIONAL") == "1"
+YT_OPTIONAL = True   # sources are Twitch-only now; YouTube downloads are informational
 TWITCH_CHANNELS = ("xqc", "shroud", "summit1g", "kaicenat", "zackrawrr")
 results = {"pass": [], "fail": [], "blocked": []}
 tmp = Path(tempfile.mkdtemp())
@@ -32,8 +32,8 @@ def check(name, fn, youtube=False):
         results["pass"].append(name)
     except Exception as e:  # noqa: BLE001
         msg = f"{type(e).__name__}: {e}"
-        if youtube and YT_OPTIONAL and any(b in msg for b in run.BLOCKED):
-            print(f"BLOCKED {name}: YouTube blocks this cloud server (expected here; use your PC runner)", flush=True)
+        if youtube and YT_OPTIONAL:
+            print(f"INFO {name}: YouTube download not available here ({msg[:160]}) - not needed for Twitch", flush=True)
             results["blocked"].append(name)
         else:
             print(f"FAIL {name}: {msg}", flush=True)
@@ -127,6 +127,26 @@ def pipeline():
 
 
 check("full pipeline on a Twitch clip", pipeline)
+
+
+def composio_accounts():
+    if not os.getenv("COMPOSIO_API_KEY"):
+        return "skipped (COMPOSIO_API_KEY secret not set yet)"
+    from clipper import publisher
+    ig = publisher._exec("INSTAGRAM_GET_USER_INFO", {"ig_user_id": "me", "fields": "id,username,account_type"})
+    return f"Instagram @{ig.get('username')} ({ig.get('account_type')}) connected"
+
+
+def notify_check():
+    from clipper import notify
+    if not (os.getenv("DISCORD_WEBHOOK_URL") or os.getenv("TELEGRAM_BOT_TOKEN")):
+        return "skipped (no Discord/Telegram secret yet)"
+    assert notify.send("🔧 gta6-clipper self-test: notifications work"), "notification failed"
+    return "test message sent"
+
+
+check("composio (instagram) connection", composio_accounts)
+check("phone notification", notify_check)
 
 print(json.dumps(results))
 sys.exit(1 if results["fail"] else 0)
