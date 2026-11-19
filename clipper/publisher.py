@@ -146,6 +146,19 @@ _CLIENT = None
 _ACCOUNTS: dict = {}
 
 
+def _timed(fn, seconds: float, what: str):
+    """Run a network call with a hard time limit so a stalled connection can't freeze the run."""
+    import concurrent.futures as cf
+    ex = cf.ThreadPoolExecutor(max_workers=1)
+    fut = ex.submit(fn)
+    try:
+        return fut.result(timeout=seconds)
+    except cf.TimeoutError as e:
+        raise PostError(f"{what} timed out after {int(seconds)} s") from e
+    finally:
+        ex.shutdown(wait=False)
+
+
 def clean_key(raw: str) -> str:
     """Accept the key even if it was pasted as 'COMPOSIO_API_KEY=ak_...', with quotes or spaces."""
     k = (raw or "").strip().strip('"').strip("'").strip()
@@ -189,7 +202,8 @@ def find_accounts() -> dict:
     if _ACCOUNTS:
         return _ACCOUNTS
     try:
-        resp = _composio().connected_accounts.list(toolkit_slugs=["youtube", "instagram"])
+        resp = _timed(lambda: _composio().connected_accounts.list(toolkit_slugs=["youtube", "instagram"]), 90,
+                      "Composio account lookup")
     except Exception as e:
         if "401" in str(e) or "Invalid API key" in str(e):
             raise PostError(f"Composio rejected the API key ({key_shape(clean_key(os.getenv('COMPOSIO_API_KEY', '')))}). "
@@ -214,7 +228,7 @@ def connect_link(toolkit: str) -> str | None:
     acc = find_accounts()
     uid = next((a["user_id"] for a in acc.values() if a.get("user_id")), None) or "gta6-clipper"
     try:
-        req = _composio().toolkits.authorize(user_id=uid, toolkit=toolkit)
+        req = _timed(lambda: _composio().toolkits.authorize(user_id=uid, toolkit=toolkit), 90, "Composio connect link")
         return getattr(req, "redirect_url", None)
     except Exception as e:  # noqa: BLE001
         print(f"[composio] could not create a {toolkit} connect link: {e}")
@@ -228,8 +242,9 @@ def _exec(slug: str, args: dict) -> dict:
         link = connect_link(toolkit)
         raise PostError(f"{toolkit} is not connected to the Composio project of this API key"
                         + (f" - connect it here: {link}" if link else ""))
-    r = _composio().tools.execute(slug, args, user_id=acc["user_id"], connected_account_id=acc["id"],
-                                  dangerously_skip_version_check=True)
+    limit = 1800 if "UPLOAD" in slug or "MEDIA" in slug else 180
+    r = _timed(lambda: _composio().tools.execute(slug, args, user_id=acc["user_id"], connected_account_id=acc["id"],
+                                                 dangerously_skip_version_check=True), limit, slug)
     if not r.get("successful"):
         raise PostError(f"{slug}: {r.get('error') or r}")
     return r.get("data") or {}
