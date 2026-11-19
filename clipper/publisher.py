@@ -142,13 +142,32 @@ _CLIENT = None
 _ACCOUNTS: dict = {}
 
 
+def clean_key(raw: str) -> str:
+    """Accept the key even if it was pasted as 'COMPOSIO_API_KEY=ak_...', with quotes or spaces."""
+    k = (raw or "").strip().strip('"').strip("'").strip()
+    if "=" in k and k.split("=", 1)[0].strip().upper().startswith("COMPOSIO"):
+        k = k.split("=", 1)[1].strip().strip('"').strip("'").strip()
+    return k
+
+
+def key_shape(k: str) -> str:
+    """Describe the key without revealing it (for error messages)."""
+    pre = next((p for p in ("ak_", "uak_", "oak_") if k.startswith(p)), None)
+    return f"{len(k)} characters, " + (f"starts with '{pre}'" if pre else "does NOT start with ak_ / uak_")
+
+
 def _composio():
     global _CLIENT
     if _CLIENT is None:
-        if not os.getenv("COMPOSIO_API_KEY"):
+        key = clean_key(os.getenv("COMPOSIO_API_KEY", ""))
+        if not key:
             raise PostError("COMPOSIO_API_KEY secret is not set")
         from composio import Composio
-        _CLIENT = Composio(api_key=os.environ["COMPOSIO_API_KEY"], dangerously_allow_auto_upload_download_files=True)
+        if key.startswith("uak_"):
+            _CLIENT = Composio(user_api_key=key, disable_api_key=True,
+                               dangerously_allow_auto_upload_download_files=True)
+        else:
+            _CLIENT = Composio(api_key=key, dangerously_allow_auto_upload_download_files=True)
     return _CLIENT
 
 
@@ -165,7 +184,14 @@ def find_accounts() -> dict:
     No user id has to be typed in anywhere."""
     if _ACCOUNTS:
         return _ACCOUNTS
-    resp = _composio().connected_accounts.list(toolkit_slugs=["youtube", "instagram"])
+    try:
+        resp = _composio().connected_accounts.list(toolkit_slugs=["youtube", "instagram"])
+    except Exception as e:
+        if "401" in str(e) or "Invalid API key" in str(e):
+            raise PostError(f"Composio rejected the API key ({key_shape(clean_key(os.getenv('COMPOSIO_API_KEY', '')))}). "
+                            "Copy a project API key from dashboard.composio.dev -> Settings -> API Keys and "
+                            "paste ONLY the key (ak_...) as the COMPOSIO_API_KEY secret.") from e
+        raise
     items = _val(resp, "items", "data") or []
     for it in items:
         status = str(_val(it, "status") or "").upper()

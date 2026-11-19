@@ -9,6 +9,12 @@ Manual:     TEST_STREAMER=kaicenat -> clips + previews for one streamer, no post
 import os
 import subprocess
 import sys
+
+for _s in (sys.stdout, sys.stderr):  # Windows consoles choke on emoji in stream titles
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001
+        pass
 from argparse import Namespace
 from pathlib import Path
 

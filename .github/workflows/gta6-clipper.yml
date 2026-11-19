@@ -37,6 +37,11 @@ permissions:
   issues: write        # comment each posted clip on the "Clips to submit" issue
   actions: read        # notice a waiting manual run and hand over early
 
+env:
+  PYTHONUTF8: "1"                        # emoji in stream titles on Windows
+  PYTHONIOENCODING: utf-8
+  HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
+
 jobs:
   clip:
     runs-on: ${{ vars.CLIPPER_RUNNER || 'ubuntu-latest' }}

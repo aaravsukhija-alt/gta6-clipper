@@ -10,6 +10,12 @@ servers are blocked by YouTube; on your own PC YouTube must pass).
 import json
 import os
 import sys
+
+for _s in (sys.stdout, sys.stderr):  # Windows consoles choke on emoji in stream titles
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001
+        pass
 import tempfile
 from pathlib import Path
 
