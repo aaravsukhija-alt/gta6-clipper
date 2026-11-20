@@ -111,6 +111,12 @@ def main() -> int:
     media = publisher.media_dir()
     # only one run happens at a time, so a lock left behind by a cancelled run is always stale
     (media / ".lock").unlink(missing_ok=True)
+    try:
+        gone = publisher.recheck_queue(cfg)
+        if gone:
+            print(f"[recheck] removed clips that are not GTA 6 / asked to remove: {gone}")
+    except Exception as e:  # noqa: BLE001
+        print(f"[recheck] {e}")
     test = os.getenv("TEST_STREAMER", "").strip().lower()
     auto = bool(cfg["posting"]["auto"]) and not test
 
@@ -130,7 +136,7 @@ def main() -> int:
     def on_clips(clips):
         for c in clips:
             with publisher.ledger_lock():
-                publisher.enqueue(c)
+                publisher.enqueue(dict(c, game_ok=True))       # made from a checked GTA 6 range
             if test:
                 print(f"preview: {preview(dict(c, file=str(media / Path(c['file']).name)))}")
 

@@ -216,6 +216,8 @@ posting:
   # paid: true streamers = your campaigns (always first in the daily limits, issue comment with campaign link).
   # Everyone else = growth posts: credited, transformative, at most this many per day in total:
   growth_max_per_day: 3
+  # clips to withdraw (download links deleted, never posted):
+  remove_clips: [yourragegaming_v2933174196_26380, yourragegaming_v2933174196_26567]
   share:                          # everything else (and Kai beyond the daily limits) is SENT TO YOU:
     enabled: true                 # EDITED + CLEAN .mp4 links on the "Clips to submit" issue
     max_per_day: 10               # best first

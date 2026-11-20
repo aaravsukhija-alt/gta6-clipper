@@ -45,3 +45,19 @@ def upload(day: str, file: Path, name: str | None = None) -> str:
     url = rel["upload_url"].split("{")[0] + "?" + urllib.parse.urlencode({"name": name})
     asset = _req("POST", url, Path(file).read_bytes(), mimetypes.guess_type(name)[0] or "video/mp4")
     return asset["browser_download_url"]
+
+
+def delete_assets(prefix: str) -> int:
+    """Delete every release download whose file name starts with prefix (e.g. a clip id)."""
+    repo = os.environ["GITHUB_REPOSITORY"]
+    n = 0
+    for rel in _req("GET", f"https://api.github.com/repos/{repo}/releases?per_page=50") or []:
+        for a in rel.get("assets") or []:
+            if a["name"].startswith(prefix):
+                req = urllib.request.Request(f"https://api.github.com/repos/{repo}/releases/assets/{a['id']}",
+                                             method="DELETE", headers={
+                                                 "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+                                                 "Accept": "application/vnd.github+json", "User-Agent": "gta6-clipper"})
+                urllib.request.urlopen(req, timeout=60).read()
+                n += 1
+    return n

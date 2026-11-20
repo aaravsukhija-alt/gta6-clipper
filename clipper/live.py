@@ -227,6 +227,9 @@ def make_live_clip(st: dict, raw: Path, spike: dict, cfg: dict, work: Path) -> d
     if lay["face_ratio"] < m["min_face_ratio"]:
         log(f"  skip: streamer not on screen (face in {lay['face_ratio']:.0%} of frames)")
         return None
+    if lay.get("mode") != "split":
+        log("  skip: no face cam to put on top")
+        return None
     dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
                                 str(raw)], capture_output=True, text=True).stdout.strip() or 0)
     pk = min(dur, lc["seconds_before"] - edit["teaser_seconds"])   # where the spike sits in the cut

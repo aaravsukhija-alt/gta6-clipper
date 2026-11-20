@@ -6,7 +6,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import audio, editor, texts, transcript, vision, ytdlp
+from . import audio, editor, games, texts, transcript, vision, ytdlp
 from .textmatch import REACTION_TAG, count_terms
 
 
@@ -64,7 +64,7 @@ def bounds(segs, peak: float, cfg: dict, duration: float) -> tuple[float, float]
     return round(start, 2), round(end, 2)
 
 
-def find_candidates(audio_file: Path, info: dict, cfg: dict, work: Path) -> list[dict]:
+def find_candidates(audio_file: Path, info: dict, cfg: dict, work: Path, ranges=None) -> list[dict]:
     m = cfg["moments"]
     duration = float(info.get("duration") or 0)
     log("  loudness scan...")
@@ -73,6 +73,10 @@ def find_candidates(audio_file: Path, info: dict, cfg: dict, work: Path) -> list
     peaks = audio.top_spikes(z, m["loudness_windows"], min_gap=int(m["target_seconds"]), min_z=m["min_loudness_z"])
     log(f"  {len(peaks)} loud spots; transcribing them with Whisper ({cfg['transcript']['whisper_model']})")
     cands = []
+    if ranges is not None:
+        before = len(peaks)
+        peaks = [p for p in peaks if games.inside(ranges, p - 1, p + 1)]
+        log(f"  {before - len(peaks)} loud spots skipped: not in a GTA 6 part of the stream")
     for n, p in enumerate(peaks):
         a = max(0.0, p - m["seconds_before_peak"] - 4)
         span = m["seconds_before_peak"] + m["seconds_after_peak"] + 8
@@ -82,6 +86,8 @@ def find_candidates(audio_file: Path, info: dict, cfg: dict, work: Path) -> list
         if lang != "en" or prob < m["min_english_prob"]:
             continue                                         # English only
         start, end = bounds(segs, p, cfg, duration or a + span)
+        if not games.inside(ranges, start, end):
+            continue                                         # the clip would reach into another game
         inside = [s for s in segs if s.end > start and s.start < end]
         text = " ".join(s.text for s in inside)
         if not texts.is_clean(text) or not text.strip():
@@ -102,6 +108,10 @@ def make_clip(job, info: dict, cand: dict, cfg: dict, work: Path, out_dir: Path)
     lay = vision.layout_for(raw, edit["width"], edit["height"], st)
     if lay["face_ratio"] < cfg["moments"]["min_face_ratio"]:
         log(f"  skip {stem}: streamer not on screen (face in {lay['face_ratio']:.0%} of frames)")
+        raw.unlink(missing_ok=True)
+        return None
+    if lay.get("mode") != "split":
+        log(f"  skip {stem}: no face cam to put on top ({lay.get('reason', 'no fixed face cam')})")
         raw.unlink(missing_ok=True)
         return None
     # teaser = loudest 1.5 s, shown first as the hook (only if the peak isn't already at the start)
@@ -130,9 +140,15 @@ def make_clip(job, info: dict, cand: dict, cfg: dict, work: Path, out_dir: Path)
 
 def process_vod(job, info: dict, cfg: dict, keep: int, work: Path, out_dir: Path) -> list[dict]:
     """Returns up to `keep` finished clips for this VOD, best first."""
+    ranges = games.gta6_ranges(info)
+    if ranges is not None:
+        if not ranges:
+            log("  no GTA 6 part in this stream (Twitch game markers) - skipped")
+            return []
+        log(f"  GTA 6 parts: {', '.join(f'{a / 3600:.1f}h-{b / 3600:.1f}h' for a, b in ranges)}")
     audio_file = ytdlp.download_audio(job.url, work / "audio")
     try:
-        cands = find_candidates(audio_file, info, cfg, work)
+        cands = find_candidates(audio_file, info, cfg, work, ranges)
     finally:
         audio_file.unlink(missing_ok=True)
     vod_start = info.get("timestamp")

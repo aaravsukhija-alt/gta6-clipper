@@ -331,6 +331,8 @@ def rules_check(item: dict, st: dict, cfg: dict, platform: str, posted: dict) ->
         problems.append(f"length {item.get('length')}s is outside 15-30 s")
     if item.get("hook") and not texts.is_positive(item["hook"]):
         problems.append("hook is negative")
+    if item.get("layout") and item["layout"] != "split":
+        problems.append("no face cam on top (blurred layout is not allowed)")
     if not item.get("hook") or item.get("n_captions", 1) <= 0:
         problems.append("not transformative enough (needs hook + word captions)")
     cap = texts.post_caption(st, item["id"], platform)
@@ -387,6 +389,7 @@ def _run_posting(cfg, now, force, only, limit, ids) -> list[dict]:
         shared = {x["clip"] for x in posted.get("shared", [])}
         blocked = posted.setdefault("blocked_streamers", {})
         todo = [q for q in queue if (platform, q["id"]) not in done and Path(q["file"]).exists() and not q.get("rejected")
+                and (q.get("game_ok") or "twitch.tv/videos/" not in (q.get("source") or ""))
                 and q["streamer"] in auto_ok and q["id"] not in shared and q["streamer"] not in blocked
                 and q["streamer"] in streamers and in_hours(streamers[q["streamer"]], now)
                 and (ids is None or q["id"] in ids)]
@@ -551,6 +554,8 @@ def _run_sharing(cfg, now, sc, ghrelease) -> list[dict]:
             break
         if item["id"] in done or item["id"] in shared or item.get("rejected") or not Path(item["file"]).exists():
             continue
+        if "twitch.tv/videos/" in (item.get("source") or "") and not item.get("game_ok"):
+            continue                                           # not yet confirmed to be GTA 6
         st = streamers.get(item["streamer"])
         if not st:
             continue
@@ -582,6 +587,64 @@ def _run_sharing(cfg, now, sc, ghrelease) -> list[dict]:
         out.append(rec)
         left -= 1
     return out
+
+
+def _save_item(item: dict):
+    f = QUEUE_DIR / f"{item['id']}.json"
+    if f.exists():
+        f.write_text(json.dumps(item, indent=1, ensure_ascii=False), encoding="utf-8")
+
+
+def _withdraw(item: dict, why: str, shared_ids: set):
+    """Reject a clip; if it was already sent to you, delete its download links and tell you."""
+    reject(item, [why])
+    if item["id"] in shared_ids:
+        from . import ghrelease
+        try:
+            n = ghrelease.delete_assets(item["id"]) if ghrelease.available() else 0
+        except Exception as e:  # noqa: BLE001
+            n = 0
+            print(f"[recheck] could not delete downloads of {item['id']}: {e}")
+        notify.send(f"❌ **Removed clip `{item['id']}`** - {why}. Do NOT post it "
+                    f"({n} download link(s) deleted).")
+
+
+def recheck_queue(cfg: dict) -> list[str]:
+    """Before posting: make sure every waiting clip is really from a GTA 6 part of its stream
+    (Twitch game markers), and drop any clip listed under remove_clips in config.yaml."""
+    import re
+    from . import games
+    removed = []
+    with ledger_lock():
+        posted = load_posted()
+        shared_ids = {x["clip"] for x in posted.get("shared", [])}
+        force = set(cfg["posting"].get("remove_clips") or [])
+        for item in load_queue():
+            if item.get("rejected"):
+                continue
+            if item["id"] in force:
+                _withdraw(item, "removed by you (remove_clips)", shared_ids)
+                removed.append(item["id"])
+                continue
+            if item.get("game_ok"):
+                continue
+            m = re.search(r"twitch\.tv/videos/(\d+)", item.get("source") or "")
+            if not m:
+                item["game_ok"] = True
+                _save_item(item)
+                continue
+            segs = games.twitch_segments(m.group(1))
+            if segs is None:
+                continue                                       # Twitch didn't answer - try next time
+            gta = [(a, b) for a, b, g in segs if games.is_gta6(g)]
+            if games.inside(gta, float(item.get("start", 0)), float(item.get("end", 0))):
+                item["game_ok"] = True
+                _save_item(item)
+            else:
+                game = next((g for a, b, g in segs if a <= float(item.get("start", 0)) < b), "another game")
+                _withdraw(item, f"not GTA 6 - it is from {game or 'another game'} in the same stream", shared_ids)
+                removed.append(item["id"])
+    return removed
 
 
 def reject(item: dict, problems: list[str]):

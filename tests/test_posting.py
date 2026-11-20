@@ -106,7 +106,7 @@ def add_clip(tmp, cid, streamer, score):
     f.write_bytes(cid.encode())                              # different content per clip
     publisher.enqueue({"id": cid, "file": str(f), "streamer": streamer, "hook": "WAIT FOR IT", "score": score,
                        "source": f"https://www.twitch.tv/videos/1?t={len(cid)}{score}s", "face_ratio": 0.9,
-                       "length": 25.0, "lang": "en", "transcript": "no way bro",
+                       "length": 25.0, "lang": "en", "transcript": "no way bro", "game_ok": True, "layout": "split",
                        "created": "2026-11-20T00:00:00+00:00"}, tmp / "media")
 
 
@@ -331,7 +331,8 @@ def test_live_clip_and_instant_post(tmp_path, monkeypatch, pub, cfg):
     monkeypatch.setattr(transcript, "transcribe_words",
                         lambda wav, model, offset=0.0: ([Seg(20, 24, "bro six cop cars no way oh my god", words)],
                                                         "en", 0.97))
-    monkeypatch.setattr(live.vision, "layout_for", lambda v, w, h, o=None: {"mode": "blur", "face_ratio": 0.8})
+    monkeypatch.setattr(live.vision, "layout_for", lambda v, w, h, o=None: {"mode": "split", "face_ratio": 0.8,
+                                                                          "box": [0.7, 0.0, 0.3, 0.35]})
     st = next(s for s in cfg["streamers"] if s["channel"] == "kaicenat")
     clip = live.make_live_clip(st, src, {"ratio": 4.0, "messages": 90, "hype": 50}, cfg, tmp_path)
     assert clip and clip["hook"] == "KAI GETS CHASED BY 6 COP CARS" and clip["score"] >= cfg["live"]["post_min_score"]
@@ -431,3 +432,68 @@ def test_takedown_stops_streamer_for_good(pub, cfg, monkeypatch):
     assert "Streamers stopped after a copyright problem" in (pub / "daily_report.md").read_text()
     assert publisher.youtube_problem(None) and publisher.youtube_problem(
         {"status": {"uploadStatus": "rejected", "rejectionReason": "copyright"}})
+
+
+
+# ---------- only GTA 6 parts of a stream; face cam required ----------
+def test_game_segments_from_chapters_and_markers(monkeypatch):
+    from clipper import games
+    games._CACHE.clear()
+    info = {"extractor_key": "TwitchVod", "id": "v1", "duration": 30000,
+            "chapters": [{"start_time": 0, "end_time": 20000, "title": "Grand Theft Auto VI"},
+                         {"start_time": 20000, "end_time": 30000, "title": "Dead by Daylight"}]}
+    r = games.gta6_ranges(info)
+    assert r == [(0.0, 20000.0)]
+    assert games.inside(r, 100, 130) and not games.inside(r, 26380, 26410) and not games.inside(r, 19990, 20020)
+    games._CACHE.clear()
+    monkeypatch.setattr(games, "_gql", lambda q: {"data": {"video": {"lengthSeconds": 36000, "game": {"name": "Just Chatting"},
+        "moments": {"edges": [
+            {"node": {"positionMilliseconds": 0, "durationMilliseconds": 0, "details": {"game": {"name": "Just Chatting"}}}},
+            {"node": {"positionMilliseconds": 3_600_000, "durationMilliseconds": 0,
+                      "details": {"game": {"name": "Grand Theft Auto VI"}}}},
+            {"node": {"positionMilliseconds": 25_000_000, "durationMilliseconds": 0,
+                      "details": {"game": {"name": "Zombie Game"}}}}]}}}})
+    r = games.gta6_ranges({"extractor_key": "TwitchVod", "id": "v2", "duration": 36000})
+    assert r == [(3600.0, 25000.0)]
+    games._CACHE.clear()
+    monkeypatch.setattr(games, "_gql", lambda q: {"data": {"video": None}})
+    assert games.gta6_ranges({"extractor_key": "TwitchVod", "id": "v3"}) == []      # unknown -> never clip
+    assert games.gta6_ranges({"extractor_key": "Youtube", "id": "x"}) is None
+
+
+def test_recheck_withdraws_non_gta_clips(pub, cfg, monkeypatch):
+    from clipper import games, ghrelease
+    games._CACHE.clear()
+    sent, deleted = [], []
+    monkeypatch.setattr(publisher.notify, "send", lambda t: sent.append(t) or True)
+    monkeypatch.setattr(ghrelease, "available", lambda: True)
+    monkeypatch.setattr(ghrelease, "delete_assets", lambda prefix: deleted.append(prefix) or 2)
+    monkeypatch.setattr(games, "twitch_segments", lambda vid, *a: [(0, 20000, "Grand Theft Auto VI"),
+                                                                   (20000, 40000, "Zombie Game")])
+    for cid, start in (("rage_good", 100), ("rage_bad", 26380)):
+        add_clip(pub, cid, "yourragegaming", 9)
+        f = publisher.QUEUE_DIR / f"{cid}.json"
+        d = json.loads(f.read_text())
+        d.update(game_ok=False, start=start, end=start + 25,
+                 source=f"https://www.twitch.tv/videos/2933174196?t={start}s")
+        f.write_text(json.dumps(d))
+    p = publisher.load_posted()
+    p["shared"] = [{"clip": "rage_bad", "day": "2026-11-20"}]
+    publisher.save_posted(p)
+    assert publisher.recheck_queue(cfg) == ["rage_bad"]
+    q = {x["id"]: x for x in publisher.load_queue()}
+    assert q["rage_good"]["game_ok"] and q["rage_bad"]["rejected"]
+    assert deleted == ["rage_bad"] and "Zombie Game" in sent[0] and "Do NOT post" in sent[0]
+    cfg["posting"]["remove_clips"] = ["rage_good"]
+    assert publisher.recheck_queue(cfg) == ["rage_good"]
+
+
+def test_blur_layout_is_never_posted(pub, cfg, monkeypatch):
+    calls = []
+    monkeypatch.setitem(publisher.POSTERS, "youtube", lambda it, st: calls.append(it["id"]) or ("y", "y"))
+    monkeypatch.setitem(publisher.POSTERS, "instagram", lambda it, st: calls.append(it["id"]) or ("i", "i"))
+    add_clip(pub, "blurry", "kaicenat", 50)
+    f = publisher.QUEUE_DIR / "blurry.json"
+    f.write_text(json.dumps(dict(json.loads(f.read_text()), layout="blur")))
+    publisher.run_posting(cfg, now=IN_WINDOW, force=True)
+    assert calls == [] and publisher.load_queue()[0]["rejected"]

@@ -48,7 +48,7 @@ def _faces(video: Path, samples: int):
             continue
         checked += 1
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(max(24, H // 25),) * 2)
+        faces = cascade.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=5, minSize=(max(20, H // 40),) * 2)
         if len(faces):
             x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
             found.append((x / W, y / H, w / W, h / H))
@@ -56,7 +56,7 @@ def _faces(video: Path, samples: int):
     return found, checked, W, H
 
 
-def layout_for(video: Path, out_w: int, out_h: int, override: dict | None = None, samples: int = 12) -> dict:
+def layout_for(video: Path, out_w: int, out_h: int, override: dict | None = None, samples: int = 16) -> dict:
     """Pick the 9:16 layout for a clip.
     split: face-cam box (fractions of the source frame) on top, gameplay below.
     blur:  whole frame centred on a blurred copy (fallback: IRL / full-screen camera / no stable face cam).
