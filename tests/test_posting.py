@@ -114,16 +114,17 @@ IN_WINDOW = datetime(2026, 11, 20, 0, 0, tzinfo=timezone.utc)       # 05:30 IST
 
 
 def test_window_caps_priority_and_no_double_posting(pub, cfg, monkeypatch):
+    cfg["posting"].update(window_ist=["05:00", "10:00"], auto_streamers=["kaicenat"])
     calls = []
     monkeypatch.setitem(publisher.POSTERS, "youtube", lambda it, st: calls.append(("yt", it["id"])) or f"yt/{it['id']}")
     monkeypatch.setitem(publisher.POSTERS, "instagram", lambda it, st: calls.append(("ig", it["id"])) or f"ig/{it['id']}")
-    for i in range(12):
+    for i in range(16):
         add_clip(pub, f"kai{i + 1}", "kaicenat", 50 - i)
     add_clip(pub, "lacy0", "lacy", 99)                # other streamers are never auto-posted
     add_clip(pub, "kai0", "kaicenat", 60)             # best score goes first
     assert publisher.run_posting(cfg, now=datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)) == []  # outside window
     publisher.run_posting(cfg, now=IN_WINDOW)
-    assert calls[0] == ("yt", "kai0") and ("ig", "kai0") in calls
+    assert calls[0] == ("yt", "kai0") and ("ig", "kai0") not in calls   # one platform per clip
     # spread out: first slot posts only a share of the day's cap
     assert 0 < sum(c[0] == "ig" for c in calls) < 8
     for minute in range(30, 300, 30):                 # rest of the window
@@ -131,7 +132,7 @@ def test_window_caps_priority_and_no_double_posting(pub, cfg, monkeypatch):
     yt = [c for c in calls if c[0] == "yt"]
     ig = [c for c in calls if c[0] == "ig"]
     assert len(yt) == 6 and len(ig) == 8              # week-1 caps
-    assert len(set(calls)) == len(calls)              # never the same clip twice per platform
+    assert len({c[1] for c in calls}) == len(calls)   # every post is a different clip
     assert not any(c[1] == "lacy0" for c in calls)
     report = (pub / "daily_report.md").read_text()
     assert "2026-11-20" in report and "Kai Cenat - Content Rewards" in report
@@ -345,13 +346,13 @@ def test_live_clip_and_instant_post(tmp_path, monkeypatch, pub, cfg):
     add_clip(pub, "older", "kaicenat", 99)                      # a higher score in the queue is NOT posted
     res = publisher.run_posting(cfg, now=datetime(2026, 11, 20, 15, 0, tzinfo=timezone.utc), force=True,
                                 ids=[clip["id"]])
-    assert [r["platform"] for r in res] == ["youtube", "instagram"] and set(calls) == {clip["id"]}
+    assert [r["platform"] for r in res] == ["youtube"] and set(calls) == {clip["id"]}   # one platform per clip
 
 
 
 def test_sharing_sends_others_and_kai_overflow(pub, cfg, monkeypatch):
     from clipper import ghrelease
-    cfg["posting"]["auto"] = True
+    cfg["posting"].update(auto=True, window_ist=["05:00", "10:00"], auto_streamers=["kaicenat"])
     sent, uploads = [], []
     monkeypatch.setattr(publisher.notify, "send", lambda t: sent.append(t) or True)
     monkeypatch.setattr(ghrelease, "available", lambda: True)

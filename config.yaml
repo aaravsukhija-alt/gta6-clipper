@@ -138,10 +138,10 @@ hype_phrases:
   - violated
 
 discovery:
-  recent_videos_per_channel: 5
+  recent_videos_per_channel: 3
   min_date: "2026-11-18"          # never use VODs from before this day
   max_age_days: 14
-  max_videos_per_run: 6
+  max_videos_per_run: 8
 
 transcript:
   languages: ["en"]
@@ -154,8 +154,8 @@ transcript:
 moments:
   loudness_windows: 30            # loudest spots per VOD that get transcribed
   min_loudness_z: 2.0
-  candidates_per_vod: 8           # best-scoring spots that get cut and face-checked
-  keep_per_streamer_per_run: 2
+  candidates_per_vod: 14          # best-scoring spots that get cut and face-checked
+  keep_per_streamer_per_run: 4
   seconds_before_peak: 25         # build-up before the spike
   seconds_after_peak: 5           # reaction after it
   target_seconds: 30

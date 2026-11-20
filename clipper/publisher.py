@@ -315,9 +315,9 @@ def rules_check(item: dict, st: dict, cfg: dict, platform: str, posted: dict) ->
     if item.get("hook") and not texts.is_positive(item["hook"]):
         problems.append("hook is negative")
     h = item.get("hash")
-    if h and any(p.get("hash") == h and p.get("ok") and p["platform"] == platform for p in posted["posts"]):
+    if h and any(p.get("hash") == h and p.get("ok") for p in posted["posts"]):
         problems.append("this exact video was already posted")
-    near = [p for p in posted["posts"] if p.get("ok") and p["platform"] == platform and p.get("source")
+    near = [p for p in posted["posts"] if p.get("ok") and p.get("source")
             and p.get("source") == item.get("source") and p["clip"] != item["id"]]
     if near:
         problems.append("this moment was already posted")
@@ -338,7 +338,8 @@ def _run_posting(cfg, now, force, only, limit, ids) -> list[dict]:
     pc = cfg["posting"]
     posted = load_posted()
     streamers = {s["channel"]: s for s in cfg["streamers"]}
-    done = {(p["platform"], p["clip"]) for p in posted["posts"] if p.get("ok")}
+    # every clip goes to ONE platform only, so YouTube and Instagram each get different clips
+    done = {(pl, p["clip"]) for p in posted["posts"] if p.get("ok") for pl in PLATFORMS}
     slots = slots_left(cfg, now)
     if slots is None and not force:
         print(f"[post] outside the posting window {pc['window_ist']} IST; nothing posted")
@@ -381,6 +382,7 @@ def _run_posting(cfg, now, force, only, limit, ids) -> list[dict]:
             try:
                 rec["link"] = POSTERS[platform](item, st)
                 rec["ok"] = True
+                done.update((pl, item["id"]) for pl in PLATFORMS)   # never also on the other platform
                 posted["first_post_day"] = posted["first_post_day"] or ist_day(now)
                 notify.send(f"✅ **{st['name']}** clip posted on {platform.title()}: {rec['link']}\n"
                             f"➡️ Submit within 30 min to **{st['campaign']}**: {st.get('campaign_url', '')}\n"
