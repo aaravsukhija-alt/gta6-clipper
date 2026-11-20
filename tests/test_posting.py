@@ -377,3 +377,57 @@ def test_sharing_sends_others_and_kai_overflow(pub, cfg, monkeypatch):
     # next day after the window: Kai clip that never got posted is sent to you
     publisher.run_sharing(cfg, now=datetime(2026, 11, 21, 6, 0, tzinfo=timezone.utc))
     assert any("kaiX" in t and "1d2bcb00" in t for t in sent)
+
+
+# ---------- campaign vs growth rules, copyright safety ----------
+def test_campaign_first_reach_hours_growth_cap_and_credit(pub, cfg, monkeypatch):
+    cfg["posting"].update(auto_streamers=None, window_ist=["00:00", "23:59"])
+    calls = []
+    monkeypatch.setitem(publisher.POSTERS, "youtube", lambda it, st: calls.append(it["streamer"]) or ("yt", "v1"))
+    monkeypatch.setitem(publisher.POSTERS, "instagram", lambda it, st: calls.append(it["streamer"]) or ("ig", "m1"))
+    for i in range(6):
+        add_clip(pub, f"xqc{i}", "xqc", 90 - i)                  # growth clips with higher scores
+    add_clip(pub, "lacy0", "lacy", 10)
+    add_clip(pub, "kai0", "kaicenat", 5)
+    early = datetime(2026, 11, 20, 0, 0, tzinfo=timezone.utc)    # 05:30 IST - Reach not allowed yet
+    publisher.run_posting(cfg, now=early, force=True)
+    assert calls[0] == "kaicenat" and "lacy" not in calls          # campaign first; Reach waits for 9 AM
+    assert calls.count("xqc") == 3                                  # growth capped at 3 per day
+    calls.clear()
+    publisher.run_posting(cfg, now=datetime(2026, 11, 20, 5, 0, tzinfo=timezone.utc), force=True)  # 10:30 IST
+    assert calls == ["lacy"]                                        # Reach now; growth cap still reached
+    for s in cfg["streamers"]:
+        assert f"Credit: {s['credit']} {s['hashtag']}" in texts.post_caption(s, "x", "instagram")
+
+
+def test_takedown_stops_streamer_for_good(pub, cfg, monkeypatch):
+    cfg["posting"].update(auto_streamers=None, window_ist=["00:00", "23:59"])
+    monkeypatch.setitem(publisher.POSTERS, "youtube", lambda it, st: (f"https://youtube.com/shorts/{it['id']}", it["id"]))
+    monkeypatch.setitem(publisher.POSTERS, "instagram", lambda it, st: ("https://instagram.com/p/x", "m_" + it["id"]))
+    add_clip(pub, "x1", "xqc", 50)
+    add_clip(pub, "k1", "kaicenat", 40)
+    now = datetime(2026, 11, 20, 0, 0, tzinfo=timezone.utc)
+    publisher.run_posting(cfg, now=now, force=True)
+    sent = []
+    monkeypatch.setattr(publisher.notify, "send", lambda t: sent.append(t) or True)
+
+    def fake_exec(slug, args):
+        if slug == "YOUTUBE_GET_VIDEO_DETAILS_BATCH":
+            return {"response_data": {"items": [
+                {"kind": "youtube#video", "id": vid, "status": {"privacyStatus": "public", "uploadStatus": "processed"},
+                 "contentDetails": {"regionRestriction": {"blocked": ["US", "GB"]}} if vid == "x1" else {}}
+                for vid in args["id"]]}}
+        return {"id": args["ig_media_id"]}
+    monkeypatch.setattr(publisher, "_exec", fake_exec)
+    res = publisher.check_takedowns(cfg, now=now)
+    assert [r["streamer"] for r in res] == ["xqc"] and "copyright" in res[0]["reason"]
+    assert sent and "STOPPED" in sent[0]
+    add_clip(pub, "x2", "xqc", 99)
+    calls = []
+    monkeypatch.setitem(publisher.POSTERS, "youtube", lambda it, st: calls.append(it["id"]) or ("y", "y"))
+    monkeypatch.setitem(publisher.POSTERS, "instagram", lambda it, st: calls.append(it["id"]) or ("i", "i"))
+    publisher.run_posting(cfg, now=now.replace(day=21), force=True)
+    assert "x2" not in calls                                        # never posted again
+    assert "Streamers stopped after a copyright problem" in (pub / "daily_report.md").read_text()
+    assert publisher.youtube_problem(None) and publisher.youtube_problem(
+        {"status": {"uploadStatus": "rejected", "rejectionReason": "copyright"}})

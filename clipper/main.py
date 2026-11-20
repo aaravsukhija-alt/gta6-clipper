@@ -75,8 +75,13 @@ def service(cfg: dict, on_clips, minutes: float) -> int:
         threads.append(threading.Thread(target=mgr.run, args=(stop,), name="live", daemon=True))
 
     def poster():
+        last_check = 0.0
         while not stop.is_set():
             try:
+                if time.time() - last_check > 1800:         # copyright check every 30 min
+                    last_check = time.time()
+                    for b in publisher.check_takedowns(cfg):
+                        print(f"[safety] stopped {b['streamer']}: {b['reason']}")
                 if cfg["posting"]["auto"]:
                     publisher.run_posting(cfg)
                 publisher.run_sharing(cfg)

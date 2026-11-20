@@ -137,8 +137,25 @@ def slots_left(cfg: dict, now: datetime) -> int | None:
 
 
 def order_queue(queue: list[dict], cfg: dict) -> list[dict]:
-    prio = {s["channel"]: s.get("priority", 9) for s in cfg["streamers"]}
-    return sorted(queue, key=lambda q: (prio.get(q["streamer"], 9), -q["score"], q["created"]))
+    """Campaign (paid) streamers first, then priority, then best score."""
+    st = {s["channel"]: s for s in cfg["streamers"]}
+    return sorted(queue, key=lambda q: (0 if st.get(q["streamer"], {}).get("paid") else 1,
+                                        st.get(q["streamer"], {}).get("priority", 9), -q["score"], q["created"]))
+
+
+def in_hours(st: dict, now: datetime) -> bool:
+    """Per-streamer posting hours (India time), e.g. Reach campaigns 09:00-23:00 so you can submit."""
+    h = st.get("post_hours_ist")
+    if not h:
+        return True
+    t = now.astimezone(IST).strftime("%H:%M")
+    return h[0] <= t < h[1]
+
+
+def growth_today(posted: dict, cfg: dict, now: datetime) -> int:
+    paid = {s["channel"] for s in cfg["streamers"] if s.get("paid")}
+    day = ist_day(now)
+    return sum(1 for p in posted["posts"] if p.get("ok") and p["day"] == day and p["streamer"] not in paid)
 
 
 # ---------------- platforms (Composio) ----------------
@@ -264,7 +281,7 @@ def post_youtube(item: dict, streamer: dict) -> str:
     privacy = (video.get("status") or {}).get("privacyStatus")
     if privacy and privacy != "public":
         raise PostError(f"YouTube made the upload '{privacy}' instead of public (https://youtu.be/{vid})")
-    return f"https://youtube.com/shorts/{vid}"
+    return f"https://youtube.com/shorts/{vid}", vid
 
 
 def post_instagram(item: dict, streamer: dict) -> str:
@@ -286,7 +303,7 @@ def post_instagram(item: dict, streamer: dict) -> str:
         link = _exec("INSTAGRAM_GET_IG_MEDIA", {"ig_media_id": mid, "fields": "permalink"}).get("permalink") or link
     except PostError:
         pass
-    return link
+    return link, mid
 
 
 POSTERS = {"youtube": post_youtube, "instagram": post_instagram}
@@ -314,6 +331,11 @@ def rules_check(item: dict, st: dict, cfg: dict, platform: str, posted: dict) ->
         problems.append(f"length {item.get('length')}s is outside 15-30 s")
     if item.get("hook") and not texts.is_positive(item["hook"]):
         problems.append("hook is negative")
+    if not item.get("hook") or item.get("n_captions", 1) <= 0:
+        problems.append("not transformative enough (needs hook + word captions)")
+    cap = texts.post_caption(st, item["id"], platform)
+    if f"Credit: {st['credit']}" not in cap:
+        problems.append("caption has no credit line")
     h = item.get("hash")
     if h and any(p.get("hash") == h and p.get("ok") for p in posted["posts"]):
         problems.append("this exact video was already posted")
@@ -363,13 +385,20 @@ def _run_posting(cfg, now, force, only, limit, ids) -> list[dict]:
             n = min(n, limit)
         auto_ok = set(pc.get("auto_streamers") or [s["channel"] for s in cfg["streamers"]])
         shared = {x["clip"] for x in posted.get("shared", [])}
+        blocked = posted.setdefault("blocked_streamers", {})
         todo = [q for q in queue if (platform, q["id"]) not in done and Path(q["file"]).exists() and not q.get("rejected")
-                and q["streamer"] in auto_ok and q["id"] not in shared
-                and (ids is None or q["id"] in ids)][:max(0, n)]
+                and q["streamer"] in auto_ok and q["id"] not in shared and q["streamer"] not in blocked
+                and q["streamer"] in streamers and in_hours(streamers[q["streamer"]], now)
+                and (ids is None or q["id"] in ids)]
+        posted_now = 0
         for item in todo:
+            if posted_now >= max(0, n):
+                break
             st = streamers.get(item["streamer"])
             if not st:
                 continue
+            if not st.get("paid") and growth_today(posted, cfg, now) >= int(pc.get("growth_max_per_day", 3)):
+                continue                                # non-campaign posts are capped; campaign clips go first
             item.setdefault("hash", file_hash(item["file"]))
             problems = rules_check(item, st, cfg, platform, posted)
             if problems:
@@ -380,13 +409,19 @@ def _run_posting(cfg, now, force, only, limit, ids) -> list[dict]:
                    "at": now.isoformat(timespec="seconds"), "campaign": st["campaign"],
                    "campaign_url": st.get("campaign_url", ""), "hash": item["hash"], "source": item.get("source")}
             try:
-                rec["link"] = POSTERS[platform](item, st)
+                res = POSTERS[platform](item, st)
+                rec["link"], rec["media_id"] = res if isinstance(res, tuple) else (res, None)
                 rec["ok"] = True
+                posted_now += 1
                 done.update((pl, item["id"]) for pl in PLATFORMS)   # never also on the other platform
                 posted["first_post_day"] = posted["first_post_day"] or ist_day(now)
-                notify.send(f"✅ **{st['name']}** clip posted on {platform.title()}: {rec['link']}\n"
-                            f"➡️ Submit within 30 min to **{st['campaign']}**: {st.get('campaign_url', '')}\n"
-                            f"Hook: {item.get('hook', '')} · score {item.get('score')}")
+                if st.get("paid"):
+                    notify.send(f"✅ **{st['name']}** clip posted on {platform.title()}: {rec['link']}\n"
+                                f"➡️ Submit within 30 min to **{st['campaign']}**: {st.get('campaign_url', '')}\n"
+                                f"Hook: {item.get('hook', '')} · score {item.get('score')}")
+                else:
+                    notify.send(f"📈 Growth post ({st['name']}, no campaign - nothing to submit) on "
+                                f"{platform.title()}: {rec['link']}")
                 print(f"[post] {platform}: {rec['link']}")
             except Exception as e:  # noqa: BLE001 - stop this platform, keep the others going
                 rec.update(ok=False, error=str(e)[:500])
@@ -401,6 +436,78 @@ def _run_posting(cfg, now, force, only, limit, ids) -> list[dict]:
                 break
     write_report(cfg)
     return results
+
+
+def _find_items(data) -> list[dict]:
+    """YouTube video resources anywhere in a Composio response."""
+    if isinstance(data, dict):
+        if data.get("kind") == "youtube#video" or ("id" in data and "status" in data):
+            return [data]
+        out = []
+        for v in data.values():
+            out += _find_items(v)
+        return out
+    if isinstance(data, list):
+        return [x for v in data for x in _find_items(v)]
+    return []
+
+
+def youtube_problem(video: dict | None) -> str | None:
+    if video is None:
+        return "video was removed from YouTube"
+    st, cd = video.get("status") or {}, video.get("contentDetails") or {}
+    if st.get("uploadStatus") in ("rejected", "deleted", "failed") or st.get("rejectionReason"):
+        return f"YouTube rejected it ({st.get('rejectionReason') or st.get('uploadStatus')})"
+    blocked = ((cd.get("regionRestriction") or {}).get("blocked")) or []
+    if blocked:
+        return f"blocked in {len(blocked)} countries (copyright claim)"
+    if st.get("privacyStatus") and st["privacyStatus"] != "public":
+        return f"YouTube made it {st['privacyStatus']}"
+    return None
+
+
+def check_takedowns(cfg: dict, now: datetime | None = None, days: int = 14) -> list[dict]:
+    """Copyright safety: if a posted clip got a claim, strike, rejection or takedown, stop that streamer
+    for good (until you say otherwise) and comment on the issue."""
+    now = now or datetime.now(timezone.utc)
+    with ledger_lock():
+        posted = load_posted()
+        blocked = posted.setdefault("blocked_streamers", {})
+        recent = [p for p in posted["posts"] if p.get("ok") and p.get("media_id") and p["streamer"] not in blocked
+                  and (now - datetime.fromisoformat(p["at"])).days <= days]
+        found = []
+        yt = [p for p in recent if p["platform"] == "youtube"]
+        if yt:
+            data = _exec("YOUTUBE_GET_VIDEO_DETAILS_BATCH", {"id": [p["media_id"] for p in yt],
+                                                             "parts": ["status", "contentDetails"]})
+            videos = {v.get("id"): v for v in _find_items(data)}
+            for p in yt:
+                why = youtube_problem(videos.get(p["media_id"]))
+                if why:
+                    found.append((p, why))
+        for p in [p for p in recent if p["platform"] == "instagram"]:
+            try:
+                _exec("INSTAGRAM_GET_IG_MEDIA", {"ig_media_id": p["media_id"], "fields": "id"})
+                p["ig_missing"] = 0
+            except PostError as e:
+                msg = str(e).lower()
+                if "timed out" in msg or "network" in msg:
+                    continue
+                p["ig_missing"] = p.get("ig_missing", 0) + 1
+                if p["ig_missing"] >= 2:                    # gone twice in a row = removed by Instagram
+                    found.append((p, "Instagram removed the post"))
+        out = []
+        for p, why in found:
+            if p["streamer"] in blocked:
+                continue
+            blocked[p["streamer"]] = {"reason": why, "link": p.get("link"), "at": now.isoformat(timespec="seconds")}
+            p["takedown"] = why
+            notify.send(f"🚫 **{p['streamer']}**: {why} - {p.get('link')}\n"
+                        f"Auto-posting for **{p['streamer']}** is STOPPED and will stay stopped until you tell me "
+                        f"to turn it back on.")
+            out.append({"streamer": p["streamer"], "reason": why, "link": p.get("link")})
+        save_posted(posted)
+    return out
 
 
 def _window_over(cfg: dict, created: str, now: datetime) -> bool:
@@ -490,6 +597,9 @@ def write_report(cfg: dict):
     days = sorted({ist_day(datetime.fromisoformat(q["created"])) for q in queue}
                   | {p["day"] for p in posted["posts"]}, reverse=True)
     lines = ["# GTA 6 clipper - daily report", "", "Days are India time (IST).", ""]
+    if posted.get("blocked_streamers"):
+        lines += ["## 🚫 Streamers stopped after a copyright problem", ""] + [
+            f"- **{k}**: {v['reason']} ({v.get('link')}, {v['at']})" for k, v in posted["blocked_streamers"].items()] + [""]
     if posted["disabled"]:
         lines += ["## ⛔ Stopped platforms", ""] + [f"- **{k}**: {v['reason']} ({v['at']})"
                                                     for k, v in posted["disabled"].items()] + [""]

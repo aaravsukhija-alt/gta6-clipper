@@ -122,7 +122,7 @@ def make_clip(job, info: dict, cand: dict, cfg: dict, work: Path, out_dir: Path)
     return {"id": stem, "file": str(out), "clean_file": str(clean), "streamer": st["channel"], "hook": hook,
             "score": cand["score"],
             "why": cand["why"], "transcript": cand["text"], "face_ratio": round(lay["face_ratio"], 2),
-            "layout": lay.get("mode"), "facecam": lay.get("box"), "lang": cand.get("lang", "en"),
+            "layout": lay.get("mode"), "facecam": lay.get("box"), "lang": cand.get("lang", "en"), "n_captions": n_caps,
             "source": source_link(info, cand["start"]),
             "vod_title": info.get("title", ""), "length": round(length, 1), "start": cand["start"],
             "end": cand["end"], "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}

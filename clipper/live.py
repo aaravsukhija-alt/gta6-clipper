@@ -247,7 +247,7 @@ def make_live_clip(st: dict, raw: Path, spike: dict, cfg: dict, work: Path) -> d
     return {"id": stem, "file": str(out), "clean_file": str(clean), "streamer": st["channel"], "hook": hook,
             "score": score,
             "why": [f"chat {spike['ratio']}x", f"loud x{loud:.1f}"] + list(hype), "transcript": text[:500],
-            "face_ratio": round(lay["face_ratio"], 2), "layout": lay.get("mode"), "facecam": lay.get("box"), "lang": lang,
+            "face_ratio": round(lay["face_ratio"], 2), "layout": lay.get("mode"), "facecam": lay.get("box"), "lang": lang, "n_captions": n,
             "source": f"https://www.twitch.tv/{st['channel']} (live)", "vod_title": "", "length": round(final, 1),
             "start": 0, "end": dur, "live": True, "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}
 

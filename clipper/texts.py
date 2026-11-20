@@ -96,7 +96,7 @@ def hashtags(streamer: dict) -> str:
 def post_caption(streamer: dict, seed: str, platform: str) -> str:
     line = _pick(CAPTIONS, seed).format(name=streamer["name"])
     extra = " #shorts" if platform == "youtube" else " #reels"
-    return f"{line}\nClip from {streamer['name']} ({streamer['credit']}).\n{hashtags(streamer)}{extra} #gaming"
+    return f"{line}\nCredit: {streamer['credit']} {streamer['hashtag']}\n{hashtags(streamer)}{extra} #gaming"
 
 
 def youtube_title(streamer: dict, hook: str) -> str:

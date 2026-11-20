@@ -5,19 +5,23 @@
 streamers:
   - {platform: twitch, channel: kaicenat, name: Kai Cenat, short_name: Kai, credit: "@KaiCenat",
      hashtag: "#KaiCenat", campaign: "Kai Cenat - Content Rewards",
-     campaign_url: "https://contentrewards.com/c/campaigns/1d2bcb00-c904-415f-aa82-f95b96baad86", priority: 1, permission: true}
+     campaign_url: "https://contentrewards.com/c/campaigns/1d2bcb00-c904-415f-aa82-f95b96baad86", priority: 1, permission: true, paid: true}
   - {platform: twitch, channel: lacy, name: Lacy, short_name: Lacy, credit: "@LACY",
      hashtag: "#LACY", campaign: "Reach - Content Rewards (Lacy)",
-     campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true}
+     campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true, paid: true,
+     post_hours_ist: ["09:00", "23:00"]}
   - {platform: twitch, channel: clix, name: Clix, short_name: Clix, credit: "@Clix",
      hashtag: "#Clix", campaign: "Reach - Content Rewards (Clix)",
-     campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true}
+     campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true, paid: true,
+     post_hours_ist: ["09:00", "23:00"]}
   - {platform: twitch, channel: yourragegaming, name: YourRAGE, short_name: Rage, credit: "@YourRAGE",
      hashtag: "#YourRAGE", campaign: "Reach - Content Rewards (YourRAGE)",
-     campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true}
+     campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true, paid: true,
+     post_hours_ist: ["09:00", "23:00"]}
   - {platform: twitch, channel: asianjeff, name: AsianJeff, short_name: Jeff, credit: "@AsianJeff",
      hashtag: "#AsianJeff", campaign: "Reach - Content Rewards (AsianJeff)",
-     campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true}
+     campaign_url: "https://contentrewards.com/c/campaigns/a5c63fad-cd53-4b81-9305-4a2d1696872a?group=1", priority: 2, permission: true, paid: true,
+     post_hours_ist: ["09:00", "23:00"]}
   # More big English streamers playing GTA 6 (no campaign joined yet: posts won't earn until you join
   # their campaigns on Content Rewards). Auto-posted after Kai's clips, best score first.
   - {platform: twitch, channel: "xqc", name: "xQc", short_name: "xQc", credit: "@xqc", hashtag: "#xQc",
@@ -208,7 +212,10 @@ live:
 
 posting:
   auto: true                      # ON: Kai clips that pass the rules check post automatically (require_approval: false)
-  auto_streamers: null            # null = every streamer is posted automatically (Kai first, then best score)
+  auto_streamers: null            # null = every streamer is posted automatically
+  # paid: true streamers = your campaigns (always first in the daily limits, issue comment with campaign link).
+  # Everyone else = growth posts: credited, transformative, at most this many per day in total:
+  growth_max_per_day: 3
   share:                          # everything else (and Kai beyond the daily limits) is SENT TO YOU:
     enabled: true                 # EDITED + CLEAN .mp4 links on the "Clips to submit" issue
     max_per_day: 10               # best first
